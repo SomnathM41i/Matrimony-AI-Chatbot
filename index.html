@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Matrubhumi Vivah Vishwa - AI Assistant</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+  body { background: linear-gradient(135deg, #fef3f0 0%, #fce4ec 100%); display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 16px; }
+  .app { width: 100%; max-width: 440px; height: 92vh; max-height: 700px; background: white; border-radius: 24px; box-shadow: 0 20px 60px rgba(0,0,0,0.12); display: flex; flex-direction: column; overflow: hidden; }
+  .header { background: linear-gradient(135deg, #c62828, #e84393); color: white; padding: 20px 24px; text-align: center; flex-shrink: 0; }
+  .header h1 { font-size: 20px; font-weight: 700; letter-spacing: 0.3px; }
+  .header p { font-size: 13px; opacity: 0.9; margin-top: 4px; font-weight: 300; }
+  .messages { flex: 1; padding: 16px 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; scroll-behavior: smooth; }
+  .msg { max-width: 85%; padding: 12px 16px; border-radius: 18px; font-size: 14px; line-height: 1.6; animation: fadeIn 0.3s ease; word-wrap: break-word; white-space: pre-wrap; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  .bot { background: #f5f5f5; align-self: flex-start; border-bottom-left-radius: 4px; color: #333; }
+  .user { background: linear-gradient(135deg, #e84393, #d81b60); color: white; align-self: flex-end; border-bottom-right-radius: 4px; }
+  .quick-replies { display: flex; gap: 6px; padding: 0 20px 10px; flex-wrap: wrap; flex-shrink: 0; }
+  .quick-replies button { background: #fff; border: 1px solid #e84393; color: #e84393; padding: 7px 14px; border-radius: 20px; font-size: 12px; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+  .quick-replies button:hover { background: #e84393; color: white; border-color: #e84393; }
+  .input-area { padding: 12px 16px 16px; border-top: 1px solid #eee; display: flex; gap: 8px; flex-shrink: 0; }
+  .input-area input { flex: 1; padding: 12px 18px; border: 1.5px solid #e0e0e0; border-radius: 24px; outline: none; font-size: 14px; transition: border 0.2s; }
+  .input-area input:focus { border-color: #e84393; }
+  .input-area button { background: linear-gradient(135deg, #e84393, #d81b60); color: white; border: none; width: 46px; height: 46px; border-radius: 50%; cursor: pointer; font-size: 18px; transition: transform 0.15s, opacity 0.2s; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+  .input-area button:active { transform: scale(0.92); }
+  .input-area button:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+  .typing-indicator { display: flex; gap: 5px; padding: 12px 16px; align-items: center; background: #f5f5f5; border-radius: 18px; align-self: flex-start; border-bottom-left-radius: 4px; }
+  .typing-indicator span { width: 8px; height: 8px; background: #999; border-radius: 50%; animation: typing 1.4s infinite ease-in-out; }
+  .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+  .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes typing { 0%, 60%, 100% { transform: translateY(0); opacity: 0.3; } 30% { transform: translateY(-6px); opacity: 1; } }
+  .error-msg { background: #fff3f0; border: 1px solid #ffccc7; color: #a8071a; align-self: center; font-size: 13px; padding: 10px 16px; border-radius: 8px; max-width: 90%; }
+  @media (max-width: 480px) { .app { height: 100vh; max-height: none; border-radius: 0; } body { padding: 0; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <h1>🪷 Matrubhumi Vivah Vishwa</h1>
+    <p>AI Assistant — Ask me anything!</p>
+  </div>
+  <div id="messages" class="messages">
+    <div class="msg bot">👋 Namaste! I'm the Matrubhumi Vivah Vishwa assistant. Ask me about <b>membership plans</b>, <b>profile search</b>, <b>safety</b>, <b>contact details</b>, or anything about the platform!</div>
+  </div>
+  <div class="quick-replies" id="quickReplies">
+    <button onclick="sendQuick('What are your membership plans and prices?')">💎 Plans</button>
+    <button onclick="sendQuick('Show me brides in Pune')">👰 Brides</button>
+    <button onclick="sendQuick('Show me grooms in Mumbai')">🤵 Grooms</button>
+    <button onclick="sendQuick('How do I contact support?')">📞 Support</button>
+    <button onclick="sendQuick('Is my data safe on your site?')">🔒 Safety</button>
+  </div>
+  <div class="input-area">
+    <input id="input" placeholder="Type your question..." autofocus>
+    <button id="sendBtn" aria-label="Send">➤</button>
+  </div>
+</div>
+
+<script>
+const API_URL = 'http://localhost:8000/chat';
+const messagesEl = document.getElementById('messages');
+const inputEl = document.getElementById('input');
+const sendBtn = document.getElementById('sendBtn');
+
+function addMsg(text, role) {
+  const div = document.createElement('div');
+  div.className = 'msg ' + role;
+  div.innerHTML = text;
+  messagesEl.appendChild(div);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+function showTyping() {
+  const div = document.createElement('div');
+  div.className = 'typing-indicator';
+  div.id = 'typing';
+  div.innerHTML = '<span></span><span></span><span></span>';
+  messagesEl.appendChild(div);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+function hideTyping() {
+  const t = document.getElementById('typing');
+  if (t) t.remove();
+}
+
+async function send() {
+  const msg = inputEl.value.trim();
+  if (!msg) return;
+  inputEl.value = '';
+  sendBtn.disabled = true;
+  addMsg(escapeHtml(msg), 'user');
+  showTyping();
+  try {
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: msg })
+    });
+    hideTyping();
+    if (!res.ok) {
+      addMsg('⚠ Server error (' + res.status + '). Please try again.', 'error-msg');
+      return;
+    }
+    const data = await res.json();
+    addMsg(escapeHtml(data.reply).replace(/\n/g, '<br>'), 'bot');
+  } catch (e) {
+    hideTyping();
+    addMsg('⚠ Could not reach the server. Make sure the backend is running on port 8000.', 'error-msg');
+  }
+  sendBtn.disabled = false;
+}
+
+function escapeHtml(text) {
+  const d = document.createElement('div');
+  d.textContent = text;
+  return d.innerHTML;
+}
+
+function sendQuick(msg) {
+  inputEl.value = msg;
+  send();
+}
+
+inputEl.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    send();
+  }
+});
+
+inputEl.focus();
+</script>
+</body>
+</html>
