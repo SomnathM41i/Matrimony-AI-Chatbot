@@ -5,7 +5,7 @@ An intelligent AI assistant by **Emperor Nexus Authority (E.N.A.)** that connect
 ## How It Works
 
 ```
-User question → Intent detection → SQL query → Database → LLM → Natural reply
+User question → Backend API → Intent detection → SQL query → MySQL Database → LLM → Natural reply
 ```
 
 The chatbot:
@@ -15,106 +15,166 @@ The chatbot:
 
 ## Features
 
+- **AI Chat Interface** — Modern React frontend with real-time messaging
+- **User Authentication** — JWT-based login/register system
+- **Conversation History** — Browse, search, and resume past conversations
 - **Membership Plans** — Query `membershipplan` table for pricing, duration, features
 - **Profile Search** — Search `register` table by gender, age, city, religion, caste, marital status
 - **FAQs** — Answers from CMS help pages
 - **Success Stories** — Share testimonials (from `successstory` / `testimonial` tables)
 - **Support** — Contact details from `siteconfig` and CMS
-- **About / Safety / Refund** — Content from CMS pages
-- **Fallback** — Combines multiple data sources for general questions
+- **Layered Architecture** — Routes → Services → Repositories → Models (myvivahai-inspired)
 
 ## Prerequisites
 
 - Python 3.10+
+- Node.js 18+
 - MySQL database (remote or local)
 - Free Groq API key from https://console.groq.com
 
 ## Quick Start
 
-### 1. Install Dependencies
+### 1. Backend Setup
 
 ```bash
+cd backend
+cp .env.example .env          # Fill in: GROQ_API_KEY, DB credentials
+python -m venv venv
+venv\Scripts\activate         # Windows
 pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
 ```
 
-### 2. Set Environment Variables
-
-Copy `.env.example` and fill in:
+### 2. Frontend Setup (in another terminal)
 
 ```bash
-# Database
-DB_HOST=your-db-host.com
-DB_PORT=3306
-DB_USER=your_db_user
-DB_PASSWORD=your_db_password
-DB_NAME=your_db_name
-
-# Groq (free)
-GROQ_API_KEY=gsk_your_key_here
+cd frontend
+npm install
+npm run dev
 ```
 
-### 3. Run the Backend
+**App:** http://localhost:5173 · **API Docs:** http://localhost:8000/docs
 
-```bash
-python matrimony_chatbot.py
+## Environment Variables
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `GROQ_API_KEY` | — | Groq API key (https://console.groq.com) |
+| `GROQ_MODEL` | `llama-3.3-70b-versatile` | LLM model |
+| `DB_HOST` | `localhost` | MySQL host |
+| `DB_PORT` | `3306` | MySQL port |
+| `DB_USER` | `root` | MySQL user |
+| `DB_PASSWORD` | — | MySQL password |
+| `DB_NAME` | `matrimony` | MySQL database |
+| `SECRET_KEY` | `change-me` | JWT signing key |
+| `DATABASE_URL` | `sqlite+aiosqlite:///./storage/chatbot.db` | Local auth DB (SQLite) |
+
+## Architecture
+
 ```
-
-Server starts at **http://localhost:8000**
-
-### 4. Open the Chat UI
-
-Open `index.html` in your browser.
-
-## API Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/` | GET | Server status |
-| `/health` | GET | Health check (DB + API) |
-| `/chat` | POST | Send a message `{"message": "..."}` |
+┌─────────────────────────────────────────────────┐
+│              Frontend (React 18 + Vite)          │
+│  ┌─────────┐ ┌────────────┐ ┌───────────────┐  │
+│  │ Zustand │ │ React Query│ │ React Router  │  │
+│  │ (Auth)  │ │ (Server    │ │ (6.23)        │  │
+│  │         │ │  State)    │ │               │  │
+│  └─────────┘ └─────┬──────┘ └───────┬───────┘  │
+│                    │                │           │
+│  ┌─────────────────┴────────────────┴────────┐ │
+│  │           Pages / Components              │ │
+│  │  Login | Chat | History | Sidebar        │ │
+│  └─────────────────┬─────────────────────────┘ │
+│                    │ HTTP (JWT Bearer Token)    │
+└────────────────────┼────────────────────────────┘
+                     │
+┌────────────────────┼────────────────────────────┐
+│          FastAPI Backend (localhost:8000)        │
+│  ┌─────────┐ ┌──────────┐ ┌──────────────────┐ │
+│  │  Auth   │ │  Chat    │ │  Admin Routes    │ │
+│  │ Routes  │ │  Routes  │ │  (health, stats) │ │
+│  └────┬────┘ └────┬─────┘ └────────┬─────────┘ │
+│       │           │                │           │
+│  ┌────┴───────────┴────────────────┴────────┐ │
+│  │            Services Layer                │ │
+│  │  AuthService | ChatService | LLMService  │ │
+│  │  DBQueryService                          │ │
+│  └────┬───────────┬────────────────┬────────┘ │
+│       │           │                │           │
+│  ┌────┴────┐ ┌───┴────┐ ┌─────────┴────────┐ │
+│  │   AI    │ │ Repos  │ │  MySQL Connector │ │
+│  │  Layer  │ │ (DAL)  │ │  (matrimony DB)  │ │
+│  │ LLM     │ │ User   │ │                  │ │
+│  │ Intent  │ │ Conv   │ │  + SQLite        │ │
+│  │ SQL Gen │ │ Msg    │ │  (auth DB)       │ │
+│  └─────────┘ └────────┘ └──────────────────┘ │
+└─────────────────────────────────────────────────┘
+```
 
 ## Project Structure
 
 ```
-├── matrimony_chatbot.py   # FastAPI backend (DB + LLM)
-├── index.html             # Chat UI (open in browser)
-├── requirements.txt       # Python dependencies
-├── .env.example           # Environment variable template
-├── sys_dbconnection.php   # Your DB connection file
-└── README.md              # This file
+├── backend/
+│   ├── app/
+│   │   ├── main.py              # FastAPI entry point
+│   │   ├── config.py            # Pydantic Settings
+│   │   ├── database.py          # SQLAlchemy async engine
+│   │   ├── api/                 # Route handlers
+│   │   │   ├── auth_routes.py   # Login/Register/Me
+│   │   │   ├── chat_routes.py   # Message processing
+│   │   │   ├── history_routes.py# Conversation CRUD
+│   │   │   └── admin_routes.py  # Health/Stats
+│   │   ├── core/                # Auth, security, constants
+│   │   ├── models/              # SQLAlchemy models
+│   │   ├── repositories/        # Data access layer
+│   │   ├── schemas/             # Pydantic schemas
+│   │   ├── services/            # Business logic
+│   │   └── ai/                  # LLM, intent, SQL gen
+│   ├── requirements.txt
+│   └── Dockerfile
+├── frontend/
+│   ├── src/
+│   │   ├── main.jsx             # App bootstrap
+│   │   ├── App.jsx              # Router provider
+│   │   ├── app/                 # Router, Zustand store
+│   │   ├── components/ui/       # ChatMessage, Sidebar, etc.
+│   │   ├── hooks/               # useAuth, useChat, useHistory
+│   │   ├── layouts/             # AuthLayout, ChatLayout
+│   │   ├── pages/               # Login, Chat, History
+│   │   ├── services/            # Axios API client
+│   │   └── styles/              # Tailwind globals
+│   ├── package.json
+│   └── vite.config.js
+├── docker-compose.yml
+└── .gitignore
 ```
 
-## Deployment
+## API Endpoints
 
-**On your web server** (for production):
-
-```bash
-nohup python matrimony_chatbot.py > chatbot.log 2>&1 &
-```
-
-Or use a process manager like `pm2` or `supervisor`.
-
-**Update the API URL** in `index.html`:
-```js
-const API_URL = 'https://your-domain.com/chat';
-```
-
-## Customization
-
-- **Add more intent keywords** — Edit `INTENT_MAP` in `matrimony_chatbot.py`
-- **Add more cities/castes** — Edit `CITIES` / `CASTE_KEYWORDS` lists
-- **Change LLM model** — Edit the `model` field in `call_llm()` (e.g., `mixtral-8x7b-32768`, `gemma2-9b-it`)
-- **Change system prompts** — Edit the `INTENT_SYSTEM` dict
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/` | GET | No | Server status |
+| `/health` | GET | No | Health check |
+| `/api/auth/login` | POST | No | User login |
+| `/api/auth/register` | POST | No | User registration |
+| `/api/auth/me` | GET | Yes | Current user |
+| `/api/chat` | POST | Yes | Send message |
+| `/api/conversations` | GET | Yes | List conversations |
+| `/api/conversations/{id}` | GET | Yes | Get conversation |
+| `/api/conversations/{id}` | PATCH | Yes | Rename conversation |
+| `/api/conversations/{id}` | DELETE | Yes | Delete conversation |
+| `/api/admin/stats` | GET | Yes | Database statistics |
 
 ## Tech Stack
 
-- **Backend**: Python, FastAPI, mysql-connector-python
-- **LLM**: Groq API (Llama 3 70B, free tier)
-- **Frontend**: Vanilla HTML/CSS/JS (no build tools needed)
-- **Database**: MySQL (your existing matrimony DB)
+| Layer | Tech |
+|-------|------|
+| **Frontend** | React 18 + Vite + Tailwind CSS + Framer Motion |
+| **Backend** | FastAPI (async) + SQLAlchemy 2.0 |
+| **AI** | Groq API (Llama 3.3 70B) |
+| **Auth** | JWT (access + refresh tokens) |
+| **Databases** | SQLite (auth/auth) + MySQL (matrimony data) |
+| **State** | Zustand (client) + TanStack React Query (server) |
 
 ## License
 
 MIT
-
-

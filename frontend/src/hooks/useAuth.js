@@ -1,0 +1,57 @@
+import { useQuery, useMutation } from '@tanstack/react-query'
+import { useAuthStore } from '../app/store'
+import { getMe, login as loginApi, register as registerApi } from '../services/authService'
+import { useNavigate } from 'react-router-dom'
+
+export function useAuth() {
+  const { token, user, setAuth, logout: storeLogout } = useAuthStore()
+  const navigate = useNavigate()
+
+  const { isLoading } = useQuery({
+    queryKey: ['me'],
+    queryFn: getMe,
+    enabled: !!token && !user,
+    retry: false,
+    onSuccess: (data) => {
+      useAuthStore.getState().setUser(data)
+    },
+    onError: () => {
+      storeLogout()
+    },
+  })
+
+  const loginMutation = useMutation({
+    mutationFn: ({ email, password }) => loginApi(email, password),
+    onSuccess: (data) => {
+      setAuth(data.access_token, data.user)
+      navigate('/chat', { replace: true })
+    },
+  })
+
+  const registerMutation = useMutation({
+    mutationFn: ({ name, email, password }) => registerApi(name, email, password),
+    onSuccess: (data) => {
+      setAuth(data.access_token, data.user)
+      navigate('/chat', { replace: true })
+    },
+  })
+
+  const logout = () => {
+    storeLogout()
+    navigate('/login', { replace: true })
+  }
+
+  return {
+    user: user || null,
+    token,
+    isLoading,
+    login: loginMutation.mutateAsync,
+    loginError: loginMutation.error,
+    isLoginLoading: loginMutation.isPending,
+    register: registerMutation.mutateAsync,
+    registerError: registerMutation.error,
+    isRegisterLoading: registerMutation.isPending,
+    logout,
+    isAuthenticated: !!token,
+  }
+}
