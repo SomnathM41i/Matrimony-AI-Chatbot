@@ -5,17 +5,17 @@ import { Bot, User } from 'lucide-react'
 
 function ProfileCard({ src, alt, details }) {
   return (
-    <div className="group flex items-start gap-4 bg-gradient-to-br from-surface-900 to-surface-950 border border-surface-700/60 hover:border-primary-500/40 rounded-2xl p-4 my-3 shadow-soft transition-all duration-200 hover:shadow-glow">
-      <div className="relative flex-shrink-0">
+    <div className="group flex flex-col sm:flex-row items-start gap-4 bg-gradient-to-br from-surface-900 to-surface-950 border border-surface-700/60 hover:border-primary-500/40 rounded-2xl p-4 my-3 shadow-soft transition-all duration-200 hover:shadow-glow">
+      <div className="relative flex-shrink-0 self-center sm:self-start">
         <div className="absolute -inset-0.5 bg-gradient-to-br from-primary-500/40 to-primary-700/40 rounded-xl blur-sm opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
         <img
           src={src}
           alt={alt || ''}
-          className="relative w-48 h-48 rounded-xl object-cover border-2 border-primary-500/20"
+          className="relative w-32 h-32 sm:w-48 sm:h-48 rounded-xl object-cover border-2 border-primary-500/20"
           loading="lazy"
         />
       </div>
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 text-center sm:text-left">
         <h4 className="text-base font-semibold text-surface-100 truncate">{alt}</h4>
         <p className="text-sm text-surface-300 mt-1.5 leading-relaxed whitespace-pre-wrap">{details}</p>
       </div>
@@ -25,17 +25,17 @@ function ProfileCard({ src, alt, details }) {
 
 function ProfileCardSimple({ src, alt }) {
   return (
-    <div className="group flex items-start gap-4 bg-gradient-to-br from-surface-900 to-surface-950 border border-surface-700/60 hover:border-primary-500/40 rounded-2xl p-4 my-3 shadow-soft transition-all duration-200">
-      <div className="relative flex-shrink-0">
+    <div className="group flex flex-col sm:flex-row items-start gap-4 bg-gradient-to-br from-surface-900 to-surface-950 border border-surface-700/60 hover:border-primary-500/40 rounded-2xl p-4 my-3 shadow-soft transition-all duration-200">
+      <div className="relative flex-shrink-0 self-center sm:self-start">
         <div className="absolute -inset-0.5 bg-gradient-to-br from-primary-500/40 to-primary-700/40 rounded-xl blur-sm opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
         <img
           src={src}
           alt={alt || ''}
-          className="relative w-48 h-48 rounded-xl object-cover border-2 border-primary-500/20"
+          className="relative w-32 h-32 sm:w-48 sm:h-48 rounded-xl object-cover border-2 border-primary-500/20"
           loading="lazy"
         />
       </div>
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 text-center sm:text-left">
         <h4 className="text-base font-semibold text-surface-100">{alt || 'Profile'}</h4>
       </div>
     </div>

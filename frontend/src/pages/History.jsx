@@ -65,7 +65,7 @@ export default function History() {
                 </div>
                 <button
                   onClick={(e) => handleDelete(e, conv.id)}
-                  className="opacity-0 group-hover:opacity-100 p-2 text-surface-500 hover:text-red-400 transition-all rounded-lg hover:bg-red-900/20"
+                  className="lg:opacity-0 lg:group-hover:opacity-100 p-2 text-surface-500 hover:text-red-400 transition-all rounded-lg hover:bg-red-900/20"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>

@@ -24,8 +24,9 @@ export default function Chat() {
   }, [messages, streaming, scrollToBottom])
 
   useEffect(() => {
+    setInput('')
     inputRef.current?.focus()
-  }, [])
+  }, [conversationId])
 
   const handleSend = () => {
     if (!input.trim() || streaming) return

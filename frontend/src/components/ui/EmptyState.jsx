@@ -13,7 +13,7 @@ export default function EmptyState() {
         Ask me anything about members, pricing plans, success stories, or general
         matrimony questions. I can query the database and provide real-time answers.
       </p>
-      <div className="mt-8 grid grid-cols-2 gap-3 w-full max-w-md">
+      <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-md">
         {[
           'Show me 5 female profiles in Pune',
           'What are your membership plans?',

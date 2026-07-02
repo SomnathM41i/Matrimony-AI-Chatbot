@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { sendMessage, getConversation } from '../services/chatService'
 
@@ -8,24 +8,30 @@ export function useChat(conversationId = null) {
   const queryClient = useQueryClient()
   const activeConvId = useRef(conversationId)
 
-  const { isLoading: isLoadingHistory } = useQuery({
+  useEffect(() => {
+    setMessages([])
+    activeConvId.current = conversationId || null
+  }, [conversationId])
+
+  const { data: conversationData, isLoading: isLoadingHistory } = useQuery({
     queryKey: ['conversation', conversationId],
-    queryFn: async () => {
-      const data = await getConversation(conversationId)
-      setMessages(
-        data.messages.map((m) => ({
-          id: m.id,
-          role: m.role,
-          content: m.content,
-          created_at: m.created_at,
-        }))
-      )
-      activeConvId.current = conversationId
-      return data
-    },
+    queryFn: () => getConversation(conversationId),
     enabled: !!conversationId,
     retry: false,
   })
+
+  useEffect(() => {
+    if (!conversationData) return
+    setMessages(
+      conversationData.messages.map((m) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        created_at: m.created_at,
+      }))
+    )
+    activeConvId.current = conversationId
+  }, [conversationData, conversationId])
 
   const chatMutation = useMutation({
     mutationFn: ({ message, convId }) => sendMessage(message, convId),
