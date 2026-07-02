@@ -133,7 +133,9 @@ def extract_marital_status(message: str) -> str | None:
 
 
 def is_database_question(message: str) -> bool:
+    import re
     msg = message.lower()
+
     db_words = [
         "member", "members", "profile", "profiles", "female", "male", "girl", "boy",
         "bride", "groom", "list", "show", "find", "search", "city", "location",
@@ -141,5 +143,16 @@ def is_database_question(message: str) -> bool:
         "statistics", "count", "total", "success", "story", "contact", "support",
         "agent", "agents", "commission", "commissions", "customer", "customers",
         "sale", "sales", "withdrawal", "withdrawals", "assignment", "assignments",
+        "tell me about", "tell me regarding", "tell me location", "tell me address",
+        "tell me age", "tell me dob", "tell me date of birth", "tell me mobile",
+        "tell me phone", "tell me email", "tell me details", "tell me name",
+        "details of", "details about", "information about", "information of",
+        "about", "who is", "who are", "show me", "give me", "do you know",
+        "date of birth", "mobile number", "phone number", "email address",
+        "age of", "location of", "address of", "city of", "name of",
     ]
-    return any(word in msg for word in db_words)
+
+    if any(word in msg for word in db_words):
+        return True
+
+    return bool(re.search(r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b', message))

@@ -13,8 +13,8 @@ export default function AuthLayout({ children }) {
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-primary-600 to-primary-800 mb-4 shadow-glow">
             <span className="text-2xl font-bold text-white">⬡</span>
           </div>
-          <h1 className="text-2xl font-bold gradient-text">ENA Chatbot</h1>
-          <p className="text-surface-400 text-sm mt-1">Emperor Nexus Authority — AI Assistant</p>
+          <h1 className="text-2xl font-bold gradient-text">myvivahai</h1>
+          <p className="text-surface-400 text-sm mt-1">AI Matrimony Assistant</p>
         </div>
         {children}
       </motion.div>

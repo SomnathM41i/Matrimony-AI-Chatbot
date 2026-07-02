@@ -10,11 +10,15 @@ class AuthService:
     def __init__(self, user_repo: UserRepository):
         self.user_repo = user_repo
 
+    @staticmethod
+    def _truncate(password: str) -> str:
+        return password.encode("utf-8")[:72].decode("utf-8", errors="ignore")
+
     def hash_password(self, password: str) -> str:
-        return pwd_context.hash(password)
+        return pwd_context.hash(self._truncate(password))
 
     def verify_password(self, plain_password: str, hashed_password: str) -> bool:
-        return pwd_context.verify(plain_password, hashed_password)
+        return pwd_context.verify(self._truncate(plain_password), hashed_password)
 
     async def register(self, name: str, email: str, password: str) -> dict:
         existing = await self.user_repo.get_by_email(email)

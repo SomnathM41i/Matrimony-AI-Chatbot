@@ -56,14 +56,15 @@ export default function Login() {
               <label className="label text-sm text-surface-400 mb-1.5 block">Name</label>
               <div className="relative">
                 <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-500" />
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="input pl-10"
-                  placeholder="Your name"
-                  required
-                />
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="input pl-10"
+                placeholder="Your name"
+                required
+                maxLength={100}
+              />
               </div>
             </div>
           )}
@@ -79,6 +80,7 @@ export default function Login() {
                 className="input pl-10"
                 placeholder="you@example.com"
                 required
+                maxLength={254}
               />
             </div>
           </div>
@@ -95,6 +97,7 @@ export default function Login() {
                 placeholder="••••••••"
                 required
                 minLength={6}
+                maxLength={72}
               />
             </div>
           </div>

@@ -9,15 +9,15 @@ from app.database import create_tables
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info(f"ENA Chatbot starting [{settings.APP_ENV}]")
+    logger.info(f"myvivahai Chatbot starting [{settings.APP_ENV}]")
     await create_tables()
     yield
-    logger.info("ENA Chatbot shutting down")
+    logger.info("myvivahai Chatbot shutting down")
 
 
 app = FastAPI(
-    title="ENA Chatbot API",
-    description="Emperor Nexus Authority - AI Matrimony Chatbot",
+    title="myvivahai Chatbot API",
+    description="myvivahai - AI Matrimony Chatbot",
     version="2.0.0",
     lifespan=lifespan,
     redirect_slashes=False,
@@ -68,7 +68,7 @@ async def health():
 async def root():
     return {
         "status": "running",
-        "app": "ENA AI Matrimony Chatbot",
+        "app": "myvivahai AI Matrimony Chatbot",
         "version": "2.0.0",
         "docs": "/docs",
     }

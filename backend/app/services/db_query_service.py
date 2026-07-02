@@ -43,9 +43,16 @@ def check_db_connection() -> bool:
 def execute_llm_sql(sql: str) -> dict:
     sql = validate_select_sql(sql, settings.allowed_tables_set)
     rows = safe_query(sql)
+    clean = sanitize_rows(rows or [])
+    for row in clean:
+        photo = row.get("Photo1") or ""
+        if photo and photo.lower() != "nophoto.jpg":
+            row["PhotoURL"] = settings.PHOTO_BASE_URL.rstrip("/") + "/" + photo.lstrip("/")
+        else:
+            row["PhotoURL"] = ""
     return {
         "sql": sql,
-        "rows": sanitize_rows(rows or []),
+        "rows": clean,
         "row_count": len(rows or []),
     }
 

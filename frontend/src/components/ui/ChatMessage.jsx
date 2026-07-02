@@ -1,10 +1,80 @@
+import { useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { fadeIn } from '../../utils/animations'
 import { Bot, User } from 'lucide-react'
 
+function ProfileCard({ src, alt, details }) {
+  return (
+    <div className="group flex items-start gap-4 bg-gradient-to-br from-surface-900 to-surface-950 border border-surface-700/60 hover:border-primary-500/40 rounded-2xl p-4 my-3 shadow-soft transition-all duration-200 hover:shadow-glow">
+      <div className="relative flex-shrink-0">
+        <div className="absolute -inset-0.5 bg-gradient-to-br from-primary-500/40 to-primary-700/40 rounded-xl blur-sm opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+        <img
+          src={src}
+          alt={alt || ''}
+          className="relative w-48 h-48 rounded-xl object-cover border-2 border-primary-500/20"
+          loading="lazy"
+        />
+      </div>
+      <div className="min-w-0 flex-1">
+        <h4 className="text-base font-semibold text-surface-100 truncate">{alt}</h4>
+        <p className="text-sm text-surface-300 mt-1.5 leading-relaxed whitespace-pre-wrap">{details}</p>
+      </div>
+    </div>
+  )
+}
+
+function ProfileCardSimple({ src, alt }) {
+  return (
+    <div className="group flex items-start gap-4 bg-gradient-to-br from-surface-900 to-surface-950 border border-surface-700/60 hover:border-primary-500/40 rounded-2xl p-4 my-3 shadow-soft transition-all duration-200">
+      <div className="relative flex-shrink-0">
+        <div className="absolute -inset-0.5 bg-gradient-to-br from-primary-500/40 to-primary-700/40 rounded-xl blur-sm opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+        <img
+          src={src}
+          alt={alt || ''}
+          className="relative w-48 h-48 rounded-xl object-cover border-2 border-primary-500/20"
+          loading="lazy"
+        />
+      </div>
+      <div className="min-w-0 flex-1">
+        <h4 className="text-base font-semibold text-surface-100">{alt || 'Profile'}</h4>
+      </div>
+    </div>
+  )
+}
+
+function splitContent(content) {
+  const parts = []
+  const pattern = /(?:^|\n)\s*(?:\d+[\.\)]\s*)?(!\[([^\]]*)\]\(([^)]+)\))\s*([^\n!]*)/g
+  let lastIndex = 0
+  let match
+
+  while ((match = pattern.exec(content)) !== null) {
+    if (match.index > lastIndex) {
+      const between = content.slice(lastIndex, match.index).trim()
+      if (between) parts.push({ type: 'text', content: between })
+    }
+    parts.push({ type: 'card', src: match[3], alt: match[2], details: match[4].trim() })
+    lastIndex = pattern.lastIndex
+  }
+
+  if (lastIndex < content.length) {
+    const rest = content.slice(lastIndex).trim()
+    if (rest) parts.push({ type: 'text', content: rest })
+  }
+
+  return parts.length > 0 ? parts : [{ type: 'text', content }]
+}
+
 export default function ChatMessage({ message }) {
   const isUser = message.role === 'user'
   const isError = message.content.startsWith('Sorry, I encountered')
+
+  const parts = useMemo(() => {
+    if (isUser) return null
+    return splitContent(message.content)
+  }, [message.content, isUser])
+
+  const hasCards = useMemo(() => parts?.some(p => p.type === 'card'), [parts])
 
   return (
     <motion.div
@@ -30,7 +100,23 @@ export default function ChatMessage({ message }) {
             : 'bg-surface-800/80 text-surface-200 border border-surface-700/50'
         }`}
       >
-        <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
+        {!hasCards ? (
+          <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
+        ) : (
+          <div className="space-y-1 text-sm leading-relaxed">
+            {parts.map((part, i) =>
+              part.type === 'card' ? (
+                part.details ? (
+                  <ProfileCard key={i} src={part.src} alt={part.alt} details={part.details} />
+                ) : (
+                  <ProfileCardSimple key={i} src={part.src} alt={part.alt} />
+                )
+              ) : (
+                part.content && <p key={i} className="whitespace-pre-wrap">{part.content}</p>
+              )
+            )}
+          </div>
+        )}
       </div>
     </motion.div>
   )

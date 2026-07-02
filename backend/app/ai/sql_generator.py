@@ -19,12 +19,15 @@ Rules:
 - Never select password fields or sensitive login fields.
 - Do not use SELECT *.
 - Select enough columns for an admin to understand the record.
-- For member/profile lists select MatriID, Name, Age, Gender, Maritalstatus, Religion, Caste, City, Dist, State, Education, Occupation, Annualincome, Height, Mobile, Status.
+- For member/profile lists select MatriID, Name, Age, Gender, Maritalstatus, Religion, Caste, City, Dist, State, Education, Occupation, Annualincome, Height, Mobile, Status, Photo1.
+- Photo1 contains the profile photo filename. The system automatically prepends the PHOTO_BASE_URL to create the full photo URL.
 - For agent lists select agent_id, full_name, mobile, email, city, state, pincode, joining_date, status.
 - For agent sales select sale_id, sale_reference, customer_name, customer_mobile, agent_id, plan_name, plan_amount, payment_status, sale_status, sale_date.
 - If the user asks for a list, include a LIMIT.
 - For location, search City OR Dist OR State with LIKE.
 - For gender, use LOWER(Gender)=LOWER('Female') or LOWER(Gender)=LOWER('Male').
+- If the user asks about a specific person by name, search Name LIKE '%searchterm%'.
+- If the user asks "tell me about X" or "who is X", treat X as a name search.
 - If no database is needed, return needs_database false, intent general, sql empty, and put the normal answer in answer_without_database.
 
 {DB_SCHEMA_HINT}

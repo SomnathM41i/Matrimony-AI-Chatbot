@@ -23,7 +23,7 @@ Available MySQL tables and useful columns:
 
 register:
 MatriID, Name, Gender, Age, Maritalstatus, Religion, Caste, City, Dist, State,
-Education, Occupation, Annualincome, Height, Mobile, Status, Regdate.
+Education, Occupation, Annualincome, Height, Mobile, Status, Regdate, Photo1.
 
 membershipplan:
 plandisplayname, planamount, planduration, plannoofcontacts,

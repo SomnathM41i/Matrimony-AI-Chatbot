@@ -2,11 +2,12 @@ import { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  MessageSquare, History, Plus, LogOut, Trash2, Menu, X,
+  MessageSquare, History, Plus, LogOut, Trash2, Menu, X, Database, Wifi, WifiOff,
 } from 'lucide-react'
 import { useHistory } from '../../hooks/useHistory'
 import { useAuth } from '../../hooks/useAuth'
 import { truncate, formatDate } from '../../utils/formatter'
+import { useDatabaseStatus } from '../../hooks/useDatabaseStatus'
 
 export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false)
@@ -14,6 +15,7 @@ export default function Sidebar() {
   const location = useLocation()
   const { conversations, deleteConversation } = useHistory()
   const { user, logout } = useAuth()
+  const { dbConnected, loading } = useDatabaseStatus()
 
   const currentConvId = location.pathname.match(/\/chat\/(\d+)/)?.[1]
 
@@ -105,6 +107,26 @@ export default function Sidebar() {
               {conversations.length === 0 && (
                 <p className="text-surface-500 text-sm text-center py-8">No conversations yet</p>
               )}
+            </div>
+
+            <div className="px-4 py-2 border-t border-surface-800">
+              <div className="flex items-center gap-2">
+                <Database className="w-3.5 h-3.5 text-surface-500" />
+                <span className="text-xs text-surface-500">MySQL</span>
+                {loading ? (
+                  <span className="w-2 h-2 rounded-full bg-surface-600 animate-pulse ml-auto" />
+                ) : dbConnected ? (
+                  <span className="flex items-center gap-1 ml-auto text-green-400 text-xs">
+                    <Wifi className="w-3 h-3" />
+                    Connected
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1 ml-auto text-red-400 text-xs">
+                    <WifiOff className="w-3 h-3" />
+                    Disconnected
+                  </span>
+                )}
+              </div>
             </div>
 
             <div className="p-4 border-t border-surface-800">

@@ -7,7 +7,7 @@ export default function EmptyState() {
         <Bot className="w-8 h-8 text-primary-400" />
       </div>
       <h2 className="text-xl font-semibold gradient-text mb-2">
-        ENA — Matrimony AI Assistant
+        myvivahai — Matrimony AI Assistant
       </h2>
       <p className="text-surface-400 text-sm max-w-md leading-relaxed">
         Ask me anything about members, pricing plans, success stories, or general

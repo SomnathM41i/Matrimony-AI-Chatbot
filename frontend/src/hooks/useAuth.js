@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { useAuthStore } from '../app/store'
 import { getMe, login as loginApi, register as registerApi } from '../services/authService'
@@ -7,18 +8,25 @@ export function useAuth() {
   const { token, user, setAuth, logout: storeLogout } = useAuthStore()
   const navigate = useNavigate()
 
-  const { isLoading } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['me'],
     queryFn: getMe,
     enabled: !!token && !user,
     retry: false,
-    onSuccess: (data) => {
-      useAuthStore.getState().setUser(data)
-    },
-    onError: () => {
-      storeLogout()
-    },
+    staleTime: 60000,
   })
+
+  useEffect(() => {
+    if (data) {
+      useAuthStore.getState().setUser(data)
+    }
+  }, [data])
+
+  useEffect(() => {
+    if (isError && token) {
+      storeLogout()
+    }
+  }, [isError, token, storeLogout])
 
   const loginMutation = useMutation({
     mutationFn: ({ email, password }) => loginApi(email, password),

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 from typing import Optional
 from datetime import datetime
 
@@ -7,11 +7,21 @@ class LoginRequest(BaseModel):
     email: str
     password: str
 
+    @field_validator("password")
+    @classmethod
+    def check_password_length(cls, v: str) -> str:
+        return v.encode("utf-8")[:72].decode("utf-8", errors="ignore")
+
 
 class RegisterRequest(BaseModel):
     name: str
     email: str
     password: str
+
+    @field_validator("password")
+    @classmethod
+    def check_password_length(cls, v: str) -> str:
+        return v.encode("utf-8")[:72].decode("utf-8", errors="ignore")
 
 
 class TokenResponse(BaseModel):

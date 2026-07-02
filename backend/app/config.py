@@ -26,6 +26,8 @@ class Settings(BaseSettings):
 
     ALLOWED_SQL_TABLES: str = "register,membershipplan,siteconfig,cms,successstory,testimonial,agents,agent_commissions,agent_customers,agent_plan_assignments,agent_sales,agent_withdrawal_requests"
 
+    PHOTO_BASE_URL: str = "https://weddingsparampara.com/photo/"
+
     CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
     MAX_MESSAGE_LENGTH: int = 5000
 
