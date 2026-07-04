@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.dependencies import get_db, get_authenticated_user
-from app.schemas.chat_schema import ChatRequest, ChatResponse
+from app.schemas.chat_schema import ChatRequest, ChatResponse, UsageInfo
 from app.services.chat_service import ChatService
 from app.models.user_model import User
 
@@ -29,6 +29,7 @@ async def send_message(
             reply=result["reply"],
             conversation_id=result["conversation_id"],
             message_id=result["message_id"],
+            usage=UsageInfo(**result.get("usage", {})),
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))

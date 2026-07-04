@@ -33,7 +33,7 @@ export default function History() {
           <div className="text-center py-16">
             <MessageSquare className="w-12 h-12 text-surface-600 mx-auto mb-4" />
             <p className="text-surface-400">No conversations yet</p>
-            <button onClick={() => navigate('/chat')} className="btn-primary mt-4">
+            <button onClick={() => navigate('/app/chat')} className="btn-primary mt-4">
               Start a new chat
             </button>
           </div>
@@ -43,7 +43,7 @@ export default function History() {
               <motion.div
                 key={conv.id}
                 {...fadeIn}
-                onClick={() => navigate(`/chat/${conv.id}`)}
+                onClick={() => navigate(`/app/chat/${conv.id}`)}
                 className="card p-4 flex items-center gap-4 cursor-pointer hover:border-surface-600 transition-all group"
               >
                 <div className="w-10 h-10 rounded-xl bg-primary-600/20 flex items-center justify-center flex-shrink-0">

@@ -32,7 +32,7 @@ export function useAuth() {
     mutationFn: ({ email, password }) => loginApi(email, password),
     onSuccess: (data) => {
       setAuth(data.access_token, data.user)
-      navigate('/chat', { replace: true })
+      navigate('/app/chat', { replace: true })
     },
   })
 
@@ -40,7 +40,7 @@ export function useAuth() {
     mutationFn: ({ name, email, password }) => registerApi(name, email, password),
     onSuccess: (data) => {
       setAuth(data.access_token, data.user)
-      navigate('/chat', { replace: true })
+      navigate('/app/chat', { replace: true })
     },
   })
 

@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { sendMessage, getConversation } from '../services/chatService'
+import { useTokenStore } from '../app/store'
 
 export function useChat(conversationId = null) {
   const [messages, setMessages] = useState([])
@@ -33,6 +34,8 @@ export function useChat(conversationId = null) {
     activeConvId.current = conversationId
   }, [conversationData, conversationId])
 
+  const setLastUsage = useTokenStore((s) => s.setLastUsage)
+
   const chatMutation = useMutation({
     mutationFn: ({ message, convId }) => sendMessage(message, convId),
     onMutate: async ({ message }) => {
@@ -54,6 +57,7 @@ export function useChat(conversationId = null) {
       }
       setMessages((prev) => [...prev, botMsg])
       activeConvId.current = data.conversation_id
+      if (data.usage?.total_tokens > 0) setLastUsage(data.usage)
       queryClient.invalidateQueries({ queryKey: ['conversations'] })
     },
     onError: () => {

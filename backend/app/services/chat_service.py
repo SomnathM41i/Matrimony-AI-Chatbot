@@ -32,28 +32,38 @@ class ChatService:
             content=message,
         )
 
+        usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         try:
             if is_database_question(message):
-                reply = await answer_database_question(message)
+                result = await answer_database_question(message)
             else:
-                reply = await get_general_response(message)
+                result = await get_general_response(message)
+            reply_text = result["content"]
+            if result.get("usage"):
+                u = result["usage"]
+                usage = {
+                    "prompt_tokens": usage["prompt_tokens"] + (u.get("prompt_tokens", 0) or 0),
+                    "completion_tokens": usage["completion_tokens"] + (u.get("completion_tokens", 0) or 0),
+                    "total_tokens": usage["total_tokens"] + (u.get("total_tokens", 0) or 0),
+                }
         except Exception as e:
             logger.error(f"Chat processing error: {e}")
-            reply = f"I encountered an error: {str(e)}"
+            reply_text = f"I encountered an error: {str(e)}"
 
         assistant_msg = await self.msg_repo.create(
             conversation_id=conv.id,
             user_id=user_id,
             role="assistant",
-            content=reply,
+            content=reply_text,
         )
 
         await self.conv_repo.update(conv, updated_at=datetime.now(timezone.utc))
 
         return {
-            "reply": reply,
+            "reply": reply_text,
             "conversation_id": conv.id,
             "message_id": assistant_msg.id,
+            "usage": usage,
         }
 
     async def get_conversation(self, user_id: int, conversation_id: int) -> dict:

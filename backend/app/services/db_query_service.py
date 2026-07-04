@@ -57,13 +57,26 @@ def execute_llm_sql(sql: str) -> dict:
     }
 
 
-async def answer_database_question(message: str) -> str:
-    plan = await generate_sql(message, settings.allowed_tables_set)
+def accumulate_usage(*usages):
+    total = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+    for u in usages:
+        total["prompt_tokens"] += u.get("prompt_tokens", 0) or 0
+        total["completion_tokens"] += u.get("completion_tokens", 0) or 0
+        total["total_tokens"] += u.get("total_tokens", 0) or 0
+    return total
+
+
+async def answer_database_question(message: str) -> dict:
+    plan, sql_usage = await generate_sql(message, settings.allowed_tables_set)
     if not plan.get("needs_database", True):
-        return plan.get("answer_without_database", "")
+        return {"content": plan.get("answer_without_database", ""), "usage": sql_usage}
     sql_result = execute_llm_sql(plan.get("sql", ""))
     from app.services.llm_service import format_db_result
-    return await format_db_result(message, sql_result)
+    formatted = await format_db_result(message, sql_result)
+    return {
+        "content": formatted["content"],
+        "usage": accumulate_usage(sql_usage, formatted.get("usage", {})),
+    }
 
 
 def get_database_stats() -> dict:

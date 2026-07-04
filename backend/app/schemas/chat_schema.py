@@ -8,10 +8,17 @@ class ChatRequest(BaseModel):
     conversation_id: Optional[int] = None
 
 
+class UsageInfo(BaseModel):
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+
+
 class ChatResponse(BaseModel):
     reply: str
     conversation_id: int
     message_id: int
+    usage: UsageInfo = UsageInfo()
 
 
 class MessageResponse(BaseModel):

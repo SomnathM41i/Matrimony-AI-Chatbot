@@ -85,8 +85,8 @@ def sanitize_rows(rows: list[dict]) -> list[dict]:
     return clean_rows
 
 
-async def generate_sql(message: str, allowed_tables: set) -> dict:
-    raw = await call_groq(
+async def generate_sql(message: str, allowed_tables: set) -> tuple[dict, dict]:
+    result = await call_groq(
         messages=[
             {"role": "system", "content": SQL_GENERATION_SYSTEM},
             {"role": "user", "content": message},
@@ -95,8 +95,8 @@ async def generate_sql(message: str, allowed_tables: set) -> dict:
         max_tokens=900,
     )
     try:
-        parsed = json.loads(clean_llm_json(raw))
+        parsed = json.loads(clean_llm_json(result["content"]))
     except Exception as e:
-        logger.error(f"SQL JSON parse error: {e}; raw={raw[:500]}")
+        logger.error(f"SQL JSON parse error: {e}; raw={result['content'][:500]}")
         raise ValueError("Could not convert request into a database query.")
-    return parsed
+    return parsed, result.get("usage", {})

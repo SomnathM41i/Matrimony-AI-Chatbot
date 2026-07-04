@@ -31,3 +31,8 @@ export const useAuthStore = create((set) => ({
     set({ user: null, token: null })
   },
 }))
+
+export const useTokenStore = create((set) => ({
+  lastUsage: null,
+  setLastUsage: (usage) => set({ lastUsage: usage }),
+}))

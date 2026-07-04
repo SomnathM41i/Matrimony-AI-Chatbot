@@ -8,6 +8,7 @@ import { useHistory } from '../../hooks/useHistory'
 import { useAuth } from '../../hooks/useAuth'
 import { truncate, formatDate } from '../../utils/formatter'
 import { useDatabaseStatus } from '../../hooks/useDatabaseStatus'
+import { useTokenStore } from '../../app/store'
 
 export default function Sidebar() {
   const [open, setOpen] = useState(false)
@@ -16,15 +17,16 @@ export default function Sidebar() {
   const { conversations, deleteConversation } = useHistory()
   const { user, logout } = useAuth()
   const { dbConnected, loading } = useDatabaseStatus()
+  const lastUsage = useTokenStore((s) => s.lastUsage)
 
-  const currentConvId = location.pathname.match(/\/chat\/(\d+)/)?.[1]
+  const currentConvId = location.pathname.match(/\/app\/chat\/(\d+)/)?.[1]
 
   useEffect(() => {
     setOpen(false)
   }, [location.pathname])
 
   const handleNewChat = () => {
-    navigate('/chat')
+    navigate('/app/chat')
     setOpen(false)
   }
 
@@ -33,7 +35,7 @@ export default function Sidebar() {
     if (confirm('Delete this conversation?')) {
       await deleteConversation(id)
       if (currentConvId === String(id)) {
-        navigate('/chat')
+        navigate('/app/chat')
       }
     }
   }
@@ -49,9 +51,9 @@ export default function Sidebar() {
 
       <nav className="flex px-3 pt-3 gap-1 border-b border-surface-800">
         <button
-          onClick={() => { navigate('/chat'); setOpen(false) }}
+          onClick={() => { navigate('/app/chat'); setOpen(false) }}
           className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
-            location.pathname.startsWith('/chat')
+            location.pathname.startsWith('/app/chat')
               ? 'bg-primary-600/20 text-primary-300'
               : 'text-surface-400 hover:text-surface-200 hover:bg-surface-800'
           }`}
@@ -60,9 +62,9 @@ export default function Sidebar() {
           Chat
         </button>
         <button
-          onClick={() => { navigate('/history'); setOpen(false) }}
+          onClick={() => { navigate('/app/history'); setOpen(false) }}
           className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
-            location.pathname === '/history'
+            location.pathname === '/app/history'
               ? 'bg-primary-600/20 text-primary-300'
               : 'text-surface-400 hover:text-surface-200 hover:bg-surface-800'
           }`}
@@ -76,7 +78,7 @@ export default function Sidebar() {
         {conversations.map((conv) => (
           <button
             key={conv.id}
-            onClick={() => { navigate(`/chat/${conv.id}`); setOpen(false) }}
+            onClick={() => { navigate(`/app/chat/${conv.id}`); setOpen(false) }}
             className={`w-full text-left px-3 py-2.5 rounded-xl text-sm transition-all group flex items-center justify-between ${
               String(conv.id) === currentConvId
                 ? 'bg-surface-800 border border-surface-700'
@@ -100,7 +102,7 @@ export default function Sidebar() {
         )}
       </div>
 
-      <div className="px-4 py-2 border-t border-surface-800">
+      <div className="px-4 py-2 border-t border-surface-800 space-y-1.5">
         <div className="flex items-center gap-2">
           <Database className="w-3.5 h-3.5 text-surface-500" />
           <span className="text-xs text-surface-500">MySQL</span>
@@ -118,6 +120,14 @@ export default function Sidebar() {
             </span>
           )}
         </div>
+        {lastUsage && (
+          <div className="flex items-center gap-2 text-xs text-surface-500">
+            <span>Tokens</span>
+            <span className="ml-auto font-mono text-primary-400">
+              {lastUsage.total_tokens}
+            </span>
+          </div>
+        )}
       </div>
 
       <div className="p-4 border-t border-surface-800">

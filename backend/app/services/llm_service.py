@@ -25,11 +25,11 @@ STRICT RULES - FOLLOW THESE EXACTLY:
 """
 
 
-async def get_general_response(message: str) -> str:
+async def get_general_response(message: str) -> dict:
     return await call_llm(BASE_SYSTEM_PROMPT, message)
 
 
-async def format_db_result(message: str, sql_result: dict) -> str:
+async def format_db_result(message: str, sql_result: dict) -> dict:
     payload = {
         "user_question": message,
         "executed_sql": sql_result["sql"],
