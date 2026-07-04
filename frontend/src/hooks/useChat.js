@@ -1,16 +1,19 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import toast from 'react-hot-toast'
 import { sendMessage, getConversation } from '../services/chatService'
 import { useTokenStore } from '../app/store'
 
-export function useChat(conversationId = null) {
+export function useChat(conversationId = null, onNewConversation) {
   const [messages, setMessages] = useState([])
   const [streaming, setStreaming] = useState(false)
   const queryClient = useQueryClient()
   const activeConvId = useRef(conversationId)
+  const lastSentRef = useRef('')
 
   useEffect(() => {
     setMessages([])
+    setStreaming(false)
     activeConvId.current = conversationId || null
   }, [conversationId])
 
@@ -23,6 +26,7 @@ export function useChat(conversationId = null) {
 
   useEffect(() => {
     if (!conversationData) return
+    if (String(conversationData.id) !== String(conversationId)) return
     setMessages(
       conversationData.messages.map((m) => ({
         id: m.id,
@@ -36,9 +40,10 @@ export function useChat(conversationId = null) {
 
   const setLastUsage = useTokenStore((s) => s.setLastUsage)
 
-  const chatMutation = useMutation({
+  const { mutate, isPending } = useMutation({
     mutationFn: ({ message, convId }) => sendMessage(message, convId),
     onMutate: async ({ message }) => {
+      lastSentRef.current = message
       const userMsg = {
         id: `temp-${Date.now()}`,
         role: 'user',
@@ -48,7 +53,8 @@ export function useChat(conversationId = null) {
       setMessages((prev) => [...prev, userMsg])
       setStreaming(true)
     },
-    onSuccess: (data) => {
+    onSuccess: (data, variables) => {
+      if (variables.convId !== activeConvId.current) return
       const botMsg = {
         id: data.message_id,
         role: 'assistant',
@@ -56,15 +62,23 @@ export function useChat(conversationId = null) {
         created_at: new Date().toISOString(),
       }
       setMessages((prev) => [...prev, botMsg])
-      activeConvId.current = data.conversation_id
+      if (data.conversation_id !== activeConvId.current) {
+        activeConvId.current = data.conversation_id
+        onNewConversation?.(data.conversation_id)
+      }
       if (data.usage?.total_tokens > 0) setLastUsage(data.usage)
       queryClient.invalidateQueries({ queryKey: ['conversations'] })
     },
-    onError: () => {
+    onError: (error, variables) => {
+      if (variables.convId !== activeConvId.current) return
+      const text = error?.response?.data?.detail || error?.message || 'Sorry, I encountered an error.'
+      toast.error(text, { id: 'chat-error' })
       const errorMsg = {
         id: `err-${Date.now()}`,
         role: 'assistant',
-        content: 'Sorry, I encountered an error. Please try again.',
+        content: text,
+        isError: true,
+        originalMessage: lastSentRef.current,
         created_at: new Date().toISOString(),
       }
       setMessages((prev) => [...prev, errorMsg])
@@ -76,14 +90,18 @@ export function useChat(conversationId = null) {
 
   const send = useCallback(
     (message) => {
-      if (!message.trim() || chatMutation.isPending) return
-      chatMutation.mutate({
+      if (!message.trim() || isPending) return
+      mutate({
         message: message.trim(),
         convId: activeConvId.current,
       })
     },
-    [chatMutation]
+    [isPending]
   )
+
+  const retry = useCallback(() => {
+    if (lastSentRef.current) send(lastSentRef.current)
+  }, [send])
 
   const clearMessages = useCallback(() => {
     setMessages([])
@@ -94,6 +112,7 @@ export function useChat(conversationId = null) {
     messages,
     streaming,
     send,
+    retry,
     clearMessages,
     isLoadingHistory,
     conversationId: activeConvId.current,

@@ -15,7 +15,4 @@ export const getMe = async () => {
   return data
 }
 
-export const refreshToken = async (refresh_token) => {
-  const { data } = await api.post('/auth/refresh', { refresh_token })
-  return data
-}
+

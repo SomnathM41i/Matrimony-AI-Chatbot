@@ -1,5 +1,5 @@
 {
-  "name": "ena-chatbot-frontend",
+  "name": "myvivahai-frontend",
   "private": true,
   "version": "2.0.0",
   "type": "module",
@@ -11,13 +11,11 @@
   "dependencies": {
     "@tanstack/react-query": "^5.40.0",
     "axios": "^1.7.2",
-    "clsx": "^2.1.1",
     "framer-motion": "^11.2.10",
     "lucide-react": "^0.383.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-hook-form": "^7.51.5",
-    "react-markdown": "^10.1.0",
+    "react-hot-toast": "^2.6.0",
     "react-router-dom": "^6.23.1",
     "zustand": "^4.5.2"
   },

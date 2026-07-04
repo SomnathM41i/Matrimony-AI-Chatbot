@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional, List, Any
+from typing import Optional, List
 from datetime import datetime
 
 
@@ -49,10 +49,6 @@ class ConversationDetail(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
-
-
-class CreateConversationRequest(BaseModel):
-    title: Optional[str] = None
 
 
 class UpdateConversationRequest(BaseModel):

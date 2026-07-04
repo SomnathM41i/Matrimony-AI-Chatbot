@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { useParams } from 'react-router-dom'
-import { motion, AnimatePresence } from 'framer-motion'
+import { useParams, useNavigate } from 'react-router-dom'
+import { AnimatePresence } from 'framer-motion'
 import { Send } from 'lucide-react'
 import ChatMessage from '../components/ui/ChatMessage'
 import TypingIndicator from '../components/ui/TypingIndicator'
@@ -9,18 +9,33 @@ import { useChat } from '../hooks/useChat'
 
 export default function Chat() {
   const { conversationId } = useParams()
+  const navigate = useNavigate()
   const [input, setInput] = useState('')
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
+  const prevMsgLen = useRef(0)
 
-  const { messages, streaming, send, isLoadingHistory } = useChat(conversationId || null)
+  const { messages, streaming, send, retry, isLoadingHistory } = useChat(
+    conversationId || null,
+    (newId) => navigate(`/app/chat/${newId}`, { replace: true })
+  )
 
-  const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  const scrollToBottom = useCallback((behavior = 'smooth') => {
+    messagesEndRef.current?.scrollIntoView({ behavior })
   }, [])
 
   useEffect(() => {
-    scrollToBottom()
+    const len = messages.length
+    const el = messagesEndRef.current?.parentElement
+    if (!el) { scrollToBottom('auto'); prevMsgLen.current = len; return }
+    const threshold = 100
+    const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < threshold
+    if (len > prevMsgLen.current) {
+      scrollToBottom(len === prevMsgLen.current + 1 ? 'smooth' : 'auto')
+    } else if (isNearBottom) {
+      scrollToBottom('smooth')
+    }
+    prevMsgLen.current = len
   }, [messages, streaming, scrollToBottom])
 
   useEffect(() => {
@@ -41,23 +56,15 @@ export default function Chat() {
     }
   }
 
-  if (isLoadingHistory) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="w-6 h-6 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
-      </div>
-    )
-  }
-
   return (
-    <div className="flex-1 flex flex-col h-full">
-      <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
+    <div className="h-full flex flex-col bg-surface-950">
+      <div className={`flex-1 overflow-y-auto px-4 py-6 ${messages.length === 0 ? 'flex flex-col justify-center' : 'space-y-4'}`}>
         {messages.length === 0 ? (
           <EmptyState />
         ) : (
           <AnimatePresence>
             {messages.map((msg) => (
-              <ChatMessage key={msg.id} message={msg} />
+              <ChatMessage key={msg.id + '-' + (msg.content || '').slice(0, 20)} message={msg} onRetry={retry} />
             ))}
           </AnimatePresence>
         )}

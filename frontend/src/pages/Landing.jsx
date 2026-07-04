@@ -56,7 +56,7 @@ export default function Landing() {
                   Sign In
                 </button>
                 <button
-                  onClick={() => navigate('/login')}
+                  onClick={() => navigate('/register')}
                   className="btn-primary text-sm inline-flex items-center gap-1.5 whitespace-nowrap"
                 >
                   Get Started

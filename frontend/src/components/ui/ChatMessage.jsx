@@ -1,19 +1,29 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { fadeIn } from '../../utils/animations'
-import { Bot, User } from 'lucide-react'
+import { Bot, User, CameraOff } from 'lucide-react'
 
 function ProfileCard({ src, alt, details }) {
+  const [imgError, setImgError] = useState(false)
+
   return (
     <div className="group flex flex-col sm:flex-row items-start gap-4 bg-gradient-to-br from-surface-900 to-surface-950 border border-surface-700/60 hover:border-primary-500/40 rounded-2xl p-4 my-3 shadow-soft transition-all duration-200 hover:shadow-glow">
       <div className="relative flex-shrink-0 self-center sm:self-start">
         <div className="absolute -inset-0.5 bg-gradient-to-br from-primary-500/40 to-primary-700/40 rounded-xl blur-sm opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-        <img
-          src={src}
-          alt={alt || ''}
-          className="relative w-32 h-32 sm:w-48 sm:h-48 rounded-xl object-cover border-2 border-primary-500/20"
-          loading="lazy"
-        />
+        {imgError ? (
+          <div className="relative w-32 h-32 sm:w-48 sm:h-48 rounded-xl border-2 border-dashed border-surface-600 bg-surface-800/50 flex flex-col items-center justify-center text-surface-500 gap-1">
+            <CameraOff className="w-6 h-6" />
+            <span className="text-[10px]">No photo</span>
+          </div>
+        ) : (
+          <img
+            src={src}
+            alt={alt || ''}
+            className="relative w-32 h-32 sm:w-48 sm:h-48 rounded-xl object-cover border-2 border-primary-500/20"
+            loading="lazy"
+            onError={() => setImgError(true)}
+          />
+        )}
       </div>
       <div className="min-w-0 flex-1 text-center sm:text-left">
         <h4 className="text-base font-semibold text-surface-100 truncate">{alt}</h4>
@@ -44,7 +54,7 @@ function ProfileCardSimple({ src, alt }) {
 
 function splitContent(content) {
   const parts = []
-  const pattern = /(?:^|\n)\s*(?:\d+[\.\)]\s*)?(!\[([^\]]*)\]\(([^)]+)\))\s*([^\n!]*)/g
+  const pattern = /(?:^|\n)\s*(?:\d+[\.\)]\s*)?(!\[([^\]]*)\]\(([^)]+)\))\s*([^\n]*)/g
   let lastIndex = 0
   let match
 
@@ -65,9 +75,9 @@ function splitContent(content) {
   return parts.length > 0 ? parts : [{ type: 'text', content }]
 }
 
-export default function ChatMessage({ message }) {
+export default function ChatMessage({ message, onRetry }) {
   const isUser = message.role === 'user'
-  const isError = message.content.startsWith('Sorry, I encountered')
+  const isError = message.isError || message.content.startsWith('Sorry, I encountered an error')
 
   const parts = useMemo(() => {
     if (isUser) return null
@@ -101,7 +111,14 @@ export default function ChatMessage({ message }) {
         }`}
       >
         {!hasCards ? (
-          <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
+          <>
+            <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
+            {isError && onRetry && (
+              <button onClick={onRetry} className="mt-2 text-xs text-primary-400 hover:text-primary-300 underline">
+                Retry
+              </button>
+            )}
+          </>
         ) : (
           <div className="space-y-1 text-sm leading-relaxed">
             {parts.map((part, i) =>

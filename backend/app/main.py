@@ -2,6 +2,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from app.config import settings
 from app.core.logger import logger
 from app.database import create_tables
@@ -15,6 +18,8 @@ async def lifespan(app: FastAPI):
     logger.info("myvivahai Chatbot shutting down")
 
 
+limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
+
 app = FastAPI(
     title="myvivahai Chatbot API",
     description="myvivahai - AI Matrimony Chatbot",
@@ -22,6 +27,9 @@ app = FastAPI(
     lifespan=lifespan,
     redirect_slashes=False,
 )
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,
@@ -56,7 +64,7 @@ async def server_error(request, exc):
 @app.get("/health")
 async def health():
     from app.services.db_query_service import check_db_connection
-    db_ok = check_db_connection()
+    db_ok = await check_db_connection()
     return {
         "status": "ok" if db_ok else "degraded",
         "database": "connected" if db_ok else "unreachable",

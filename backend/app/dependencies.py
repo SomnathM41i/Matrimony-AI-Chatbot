@@ -1,12 +1,12 @@
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.database import get_session
+from app.database import get_db_session
 from app.core.auth import get_current_user
 from app.models.user_model import User
 
 
 async def get_db() -> AsyncSession:
-    async for session in get_session():
+    async for session in get_db_session():
         yield session
 
 

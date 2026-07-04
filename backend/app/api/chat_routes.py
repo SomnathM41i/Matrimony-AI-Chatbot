@@ -1,22 +1,26 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.config import settings
 from app.dependencies import get_db, get_authenticated_user
 from app.schemas.chat_schema import ChatRequest, ChatResponse, UsageInfo
 from app.services.chat_service import ChatService
 from app.models.user_model import User
+from app.main import limiter
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
 
 @router.post("", response_model=ChatResponse)
+@limiter.limit("30/minute")
 async def send_message(
+    request: Request,
     body: ChatRequest,
     user: User = Depends(get_authenticated_user),
     db: AsyncSession = Depends(get_db),
 ):
     if not body.message.strip():
         raise HTTPException(status_code=400, detail="Message cannot be empty")
-    if len(body.message) > 5000:
+    if len(body.message) > settings.MAX_MESSAGE_LENGTH:
         raise HTTPException(status_code=400, detail="Message too long")
     service = ChatService(db)
     try:
@@ -25,6 +29,7 @@ async def send_message(
             message=body.message.strip(),
             conversation_id=body.conversation_id,
         )
+        await db.commit()
         return ChatResponse(
             reply=result["reply"],
             conversation_id=result["conversation_id"],

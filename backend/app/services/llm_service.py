@@ -1,31 +1,38 @@
+import json
+from app.config import settings
 from app.ai.llm_client import call_llm, call_groq
+from app.ai.intent_detector import is_database_question
 from app.core.logger import logger
+from app.core.prompts import BASE_SYSTEM_PROMPT, FORMAT_SYSTEM_PROMPT
 
-BASE_SYSTEM_PROMPT = """You are an intelligent AI assistant for a matrimony platform.
-Answer the user's question using your own general knowledge.
-NEVER mention or fabricate database queries, SQL, or database results.
-If the user asks about specific members, profiles, or data from the platform, let them know you'll look it up.
-Be conversational, helpful, and concise."""
 
-FORMAT_SYSTEM_PROMPT = """
-You are an admin database assistant for a matrimony platform.
-You are given actual database query results. Format them in clear human language.
+def _truncate_payload(payload: dict) -> str:
+    truncated_rows = []
+    for row in payload.get("rows", []):
+        truncated_row = {}
+        for key, value in row.items():
+            if isinstance(value, str) and len(value) > settings.MAX_FIELD_CHARS:
+                truncated_row[key] = value[:settings.MAX_FIELD_CHARS] + "..."
+            else:
+                truncated_row[key] = value
+        truncated_rows.append(truncated_row)
 
-STRICT RULES - FOLLOW THESE EXACTLY:
-1. NEVER show or mention SQL queries, table names, or column names.
-2. NEVER make up or invent any data that is not in the provided rows.
-3. If row_count is 0, say no matching records were found — do NOT invent any.
-4. Use ONLY the fields present in the rows — do not add extra details.
-5. For profile rows with a non-empty PhotoURL, format as:
-   ![Name](PhotoURL) Age, Gender, City, Religion, Caste, Occupation, Maritalstatus
-6. If PhotoURL is empty, skip the image and just list text details.
-7. Keep each profile to a single line.
-8. If the user asks for a list, prefix with a number.
-9. Be direct and concise.
-"""
+    result = json.dumps({
+        "user_question": payload["user_question"],
+        "executed_sql": payload["executed_sql"],
+        "row_count": payload["row_count"],
+        "rows": truncated_rows[:settings.MAX_ROWS_IN_PAYLOAD],
+    }, ensure_ascii=False, default=str)
+
+    if len(result) > settings.MAX_PAYLOAD_CHARS:
+        result = result[:settings.MAX_PAYLOAD_CHARS] + '"}'
+
+    return result
 
 
 async def get_general_response(message: str) -> dict:
+    if is_database_question(message):
+        return {"content": "I'll search the database for that right away.", "usage": None}
     return await call_llm(BASE_SYSTEM_PROMPT, message)
 
 
@@ -36,11 +43,12 @@ async def format_db_result(message: str, sql_result: dict) -> dict:
         "row_count": sql_result["row_count"],
         "rows": sql_result["rows"],
     }
+    payload_str = _truncate_payload(payload)
     return await call_groq(
         messages=[
             {"role": "system", "content": FORMAT_SYSTEM_PROMPT},
-            {"role": "user", "content": str(payload)},
+            {"role": "user", "content": payload_str},
         ],
-        temperature=0.2,
-        max_tokens=1400,
+        temperature=settings.FORMAT_TEMPERATURE,
+        max_tokens=settings.FORMAT_MAX_TOKENS,
     )

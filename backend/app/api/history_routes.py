@@ -1,10 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.dependencies import get_db, get_authenticated_user
-from app.schemas.chat_schema import (
-    ConversationListItem, ConversationDetail, UpdateConversationRequest
-)
-from app.schemas.common_schema import SuccessResponse, PaginatedResponse
+from app.schemas.chat_schema import UpdateConversationRequest
+from app.schemas.common_schema import SuccessResponse
 from app.services.chat_service import ChatService
 from app.models.user_model import User
 
@@ -44,9 +42,11 @@ async def update_conversation(
 ):
     service = ChatService(db)
     try:
-        return await service.update_conversation(
+        result = await service.update_conversation(
             user.id, conversation_id, title=body.title
         )
+        await db.commit()
+        return result
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -60,6 +60,7 @@ async def delete_conversation(
     service = ChatService(db)
     try:
         await service.delete_conversation(user.id, conversation_id)
+        await db.commit()
         return SuccessResponse(message="Conversation deleted")
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))

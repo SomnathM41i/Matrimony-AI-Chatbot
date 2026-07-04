@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  MessageSquare, History, Plus, LogOut, Trash2, Menu, X, Database, Wifi, WifiOff,
+  MessageSquare, History, Plus, LogOut, Trash2, Menu, X, Database, Wifi, WifiOff, Brain,
 } from 'lucide-react'
 import { useHistory } from '../../hooks/useHistory'
 import { useAuth } from '../../hooks/useAuth'
@@ -19,7 +19,7 @@ export default function Sidebar() {
   const { dbConnected, loading } = useDatabaseStatus()
   const lastUsage = useTokenStore((s) => s.lastUsage)
 
-  const currentConvId = location.pathname.match(/\/app\/chat\/(\d+)/)?.[1]
+  const currentConvId = location.pathname.match(/\/app\/chat\/([^/]+)/)?.[1]
 
   useEffect(() => {
     setOpen(false)
@@ -76,10 +76,13 @@ export default function Sidebar() {
 
       <div className="flex-1 overflow-y-auto p-3 space-y-1">
         {conversations.map((conv) => (
-          <button
+          <div
             key={conv.id}
             onClick={() => { navigate(`/app/chat/${conv.id}`); setOpen(false) }}
-            className={`w-full text-left px-3 py-2.5 rounded-xl text-sm transition-all group flex items-center justify-between ${
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => { if (e.key === 'Enter') { navigate(`/app/chat/${conv.id}`); setOpen(false) } }}
+            className={`w-full text-left px-3 py-2.5 rounded-xl text-sm transition-all group flex items-center justify-between cursor-pointer ${
               String(conv.id) === currentConvId
                 ? 'bg-surface-800 border border-surface-700'
                 : 'hover:bg-surface-800/50 border border-transparent'
@@ -95,7 +98,7 @@ export default function Sidebar() {
             >
               <Trash2 className="w-3.5 h-3.5" />
             </button>
-          </button>
+          </div>
         ))}
         {conversations.length === 0 && (
           <p className="text-surface-500 text-sm text-center py-8">No conversations yet</p>
@@ -121,10 +124,11 @@ export default function Sidebar() {
           )}
         </div>
         {lastUsage && (
-          <div className="flex items-center gap-2 text-xs text-surface-500">
-            <span>Tokens</span>
-            <span className="ml-auto font-mono text-primary-400">
-              {lastUsage.total_tokens}
+          <div className="flex items-center gap-2">
+            <Brain className="w-3.5 h-3.5 text-primary-400" />
+            <span className="text-xs text-surface-500">Tokens used</span>
+            <span className="ml-auto text-xs font-mono text-primary-400 tabular-nums">
+              {lastUsage.total_tokens.toLocaleString()}
             </span>
           </div>
         )}

@@ -1,9 +1,10 @@
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.config import settings
 from app.repositories.conversation_repository import ConversationRepository
 from app.repositories.chat_repository import ChatRepository
 from app.services.llm_service import get_general_response
-from app.services.db_query_service import answer_database_question, check_db_connection
-from app.ai.intent_detector import is_database_question, detect_intent
+from app.services.db_query_service import answer_database_question
+from app.ai.intent_llm import detect_intent_with_llm
 from app.core.logger import logger
 from datetime import datetime, timezone
 
@@ -22,7 +23,8 @@ class ChatService:
             if not conv or conv.user_id != user_id:
                 raise ValueError("Conversation not found")
         else:
-            title = message[:60] + ("..." if len(message) > 60 else "")
+            n = settings.CHAT_TITLE_TRUNCATION
+            title = message[:n] + ("..." if len(message) > n else "")
             conv = await self.conv_repo.create(user_id=user_id, title=title)
 
         user_msg = await self.msg_repo.create(
@@ -34,7 +36,7 @@ class ChatService:
 
         usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         try:
-            if is_database_question(message):
+            if await detect_intent_with_llm(message):
                 result = await answer_database_question(message)
             else:
                 result = await get_general_response(message)
@@ -85,20 +87,13 @@ class ChatService:
 
     async def list_conversations(self, user_id: int, page: int = 1, page_size: int = 20) -> dict:
         offset = (page - 1) * page_size
-        conversations = await self.conv_repo.list_by_user(user_id, limit=page_size, offset=offset)
+        items = await self.conv_repo.list_by_user_with_counts(user_id, limit=page_size, offset=offset)
         total = await self.conv_repo.count_by_user(user_id)
-        result = []
-        for conv in conversations:
-            msg_count = await self.msg_repo.count_by_conversation(conv.id)
-            result.append({
-                "id": conv.id,
-                "title": conv.title,
-                "message_count": msg_count,
-                "created_at": conv.created_at.isoformat(),
-                "updated_at": conv.updated_at.isoformat(),
-            })
+        for item in items:
+            item["created_at"] = item["created_at"].isoformat() if item["created_at"] else None
+            item["updated_at"] = item["updated_at"].isoformat() if item["updated_at"] else None
         return {
-            "items": result,
+            "items": items,
             "total": total,
             "page": page,
             "page_size": page_size,

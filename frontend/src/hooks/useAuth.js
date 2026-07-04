@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { useQuery, useMutation } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '../app/store'
 import { getMe, login as loginApi, register as registerApi } from '../services/authService'
 import { useNavigate } from 'react-router-dom'
@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom'
 export function useAuth() {
   const { token, user, setAuth, logout: storeLogout } = useAuthStore()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['me'],
@@ -25,8 +26,9 @@ export function useAuth() {
   useEffect(() => {
     if (isError && token) {
       storeLogout()
+      queryClient.clear()
     }
-  }, [isError, token, storeLogout])
+  }, [isError, token, storeLogout, queryClient])
 
   const loginMutation = useMutation({
     mutationFn: ({ email, password }) => loginApi(email, password),
@@ -46,6 +48,7 @@ export function useAuth() {
 
   const logout = () => {
     storeLogout()
+    queryClient.clear()
     navigate('/login', { replace: true })
   }
 

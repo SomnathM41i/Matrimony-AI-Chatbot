@@ -1,4 +1,6 @@
 import axios from 'axios'
+import { navigateTo } from './navigate'
+import { useAuthStore } from '../app/store'
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api',
@@ -18,8 +20,8 @@ api.interceptors.response.use(
   (res) => res,
   (err) => {
     if (err.response?.status === 401) {
-      localStorage.removeItem('access_token')
-      window.location.href = '/login'
+      useAuthStore.getState().logout()
+      navigateTo('/login')
     }
     return Promise.reject(err)
   }

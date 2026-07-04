@@ -37,28 +37,7 @@ export default {
       },
       boxShadow: {
         'soft': '0 2px 15px -3px rgba(0, 0, 0, 0.07), 0 10px 20px -2px rgba(0, 0, 0, 0.04)',
-        'card': '0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24)',
-        'card-hover': '0 14px 28px rgba(0,0,0,0.25), 0 10px 10px rgba(0,0,0,0.22)',
         'glow': '0 0 15px rgba(168, 85, 247, 0.4)',
-      },
-      animation: {
-        'shimmer': 'shimmer 2s infinite linear',
-        'float': 'float 3s ease-in-out infinite',
-        'glow-pulse': 'glow-pulse 2s ease-in-out infinite',
-      },
-      keyframes: {
-        shimmer: {
-          '0%': { backgroundPosition: '-200% 0' },
-          '100%': { backgroundPosition: '200% 0' },
-        },
-        float: {
-          '0%, 100%': { transform: 'translateY(0)' },
-          '50%': { transform: 'translateY(-10px)' },
-        },
-        'glow-pulse': {
-          '0%, 100%': { boxShadow: '0 0 5px rgba(168, 85, 247, 0.4)' },
-          '50%': { boxShadow: '0 0 20px rgba(168, 85, 247, 0.8)' },
-        },
       },
     },
   },

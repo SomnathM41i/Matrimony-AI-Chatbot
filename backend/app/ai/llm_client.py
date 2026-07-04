@@ -6,33 +6,36 @@ from app.config import settings
 from app.core.logger import logger
 
 
-RETRYABLE_STATUSES = {429, 500, 502, 503, 504}
-MAX_RETRIES = 4
-BASE_DELAY = 1.0
+class GroqPayloadTooLargeError(Exception):
+    pass
 
 
 async def call_groq(
     messages: list[dict],
     model: str | None = None,
-    temperature: float = 0.5,
-    max_tokens: int = 1200,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
 ) -> dict:
     if not settings.GROQ_API_KEY:
         raise RuntimeError("GROQ_API_KEY not configured")
 
+    _temperature = temperature if temperature is not None else settings.DEFAULT_TEMPERATURE
+    _max_tokens = max_tokens if max_tokens is not None else settings.DEFAULT_MAX_TOKENS
+    _max_retries = settings.LLM_MAX_RETRIES
+    _base_delay = settings.LLM_BASE_DELAY
+    _retryable = settings.retryable_statuses_set
     verify = certifi.where() if settings.GROQ_VERIFY_SSL else False
-    last_error: Exception | None = None
 
-    for attempt in range(MAX_RETRIES + 1):
+    for attempt in range(_max_retries + 1):
         try:
-            async with httpx.AsyncClient(timeout=30, verify=verify) as client:
+            async with httpx.AsyncClient(timeout=settings.LLM_TIMEOUT, verify=verify) as client:
                 resp = await client.post(
-                    "https://api.groq.com/openai/v1/chat/completions",
+                    settings.GROQ_API_URL,
                     json={
                         "model": model or settings.GROQ_MODEL,
                         "messages": messages,
-                        "temperature": temperature,
-                        "max_tokens": max_tokens,
+                        "temperature": _temperature,
+                        "max_tokens": _max_tokens,
                     },
                     headers={
                         "Authorization": f"Bearer {settings.GROQ_API_KEY}",
@@ -40,8 +43,13 @@ async def call_groq(
                     },
                 )
 
-                if resp.status_code == 429 and attempt < MAX_RETRIES:
-                    delay = BASE_DELAY * (2 ** attempt) + random.random()
+                if resp.status_code == 413:
+                    raise GroqPayloadTooLargeError(
+                        "Payload too large for Groq API. Try narrowing your search criteria."
+                    )
+
+                if resp.status_code == 429 and attempt < _max_retries:
+                    delay = _base_delay * (2 ** attempt) + random.random()
                     logger.warning(
                         f"Groq 429 rate limited (attempt {attempt + 1}), "
                         f"retrying in {delay:.1f}s..."
@@ -57,8 +65,8 @@ async def call_groq(
                 }
 
         except httpx.TimeoutException:
-            if attempt < MAX_RETRIES:
-                delay = BASE_DELAY * (2 ** attempt) + random.random()
+            if attempt < _max_retries:
+                delay = _base_delay * (2 ** attempt) + random.random()
                 logger.warning(
                     f"Groq timeout (attempt {attempt + 1}), "
                     f"retrying in {delay:.1f}s..."
@@ -68,8 +76,8 @@ async def call_groq(
             raise
 
         except httpx.HTTPStatusError as e:
-            if e.response.status_code in RETRYABLE_STATUSES and attempt < MAX_RETRIES:
-                delay = BASE_DELAY * (2 ** attempt) + random.random()
+            if e.response.status_code in _retryable and attempt < _max_retries:
+                delay = _base_delay * (2 ** attempt) + random.random()
                 logger.warning(
                     f"Groq {e.response.status_code} (attempt {attempt + 1}), "
                     f"retrying in {delay:.1f}s..."
@@ -78,18 +86,18 @@ async def call_groq(
                 continue
             raise
 
-    raise last_error or RuntimeError("Groq request failed after retries")
+    raise RuntimeError("Groq request failed after retries")
 
 
 async def call_llm(
     system_prompt: str,
     user_message: str,
-    temperature: float = 0.5,
-    max_tokens: int = 1200,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
 ) -> dict:
     messages = [
-        {"role": "system", "content": system_prompt[:3000]},
-        {"role": "user", "content": user_message[:5000]},
+        {"role": "system", "content": system_prompt[:settings.LLM_PROMPT_TRUNCATION]},
+        {"role": "user", "content": user_message[:settings.LLM_MESSAGE_TRUNCATION]},
     ]
     try:
         return await call_groq(messages, temperature=temperature, max_tokens=max_tokens)

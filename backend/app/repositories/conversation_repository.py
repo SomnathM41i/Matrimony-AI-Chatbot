@@ -1,6 +1,8 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc
+from sqlalchemy.orm import joinedload
 from app.models.conversation_model import Conversation
+from app.models.chat_model import ChatMessage
 
 
 class ConversationRepository:
@@ -44,6 +46,37 @@ class ConversationRepository:
         await self.db.flush()
         await self.db.refresh(conv)
         return conv
+
+    async def list_by_user_with_counts(
+        self, user_id: int, limit: int = 50, offset: int = 0
+    ) -> list[dict]:
+        stmt = (
+            select(
+                Conversation.id,
+                Conversation.title,
+                Conversation.created_at,
+                Conversation.updated_at,
+                func.count(ChatMessage.id).label("message_count"),
+            )
+            .outerjoin(ChatMessage, ChatMessage.conversation_id == Conversation.id)
+            .where(Conversation.user_id == user_id, Conversation.status != "deleted")
+            .group_by(Conversation.id)
+            .order_by(desc(Conversation.updated_at))
+            .limit(limit)
+            .offset(offset)
+        )
+        result = await self.db.execute(stmt)
+        rows = result.all()
+        return [
+            {
+                "id": r.id,
+                "title": r.title,
+                "message_count": r.message_count,
+                "created_at": r.created_at,
+                "updated_at": r.updated_at,
+            }
+            for r in rows
+        ]
 
     async def delete(self, conv: Conversation) -> None:
         conv.status = "deleted"

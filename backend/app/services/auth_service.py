@@ -1,7 +1,6 @@
 from passlib.context import CryptContext
 from app.repositories.user_repository import UserRepository
 from app.core.security import create_access_token, create_refresh_token, decode_token
-from app.core.logger import logger
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -27,8 +26,8 @@ class AuthService:
         password_hash = self.hash_password(password)
         user = await self.user_repo.create(email=email, name=name, password_hash=password_hash)
         return {
-            "access_token": create_access_token({"sub": str(user.id)}),
-            "refresh_token": create_refresh_token({"sub": str(user.id)}),
+            "access_token": create_access_token({"sub": str(user.id)}, token_version=user.token_version),
+            "refresh_token": create_refresh_token({"sub": str(user.id)}, token_version=user.token_version),
             "user": user,
         }
 
@@ -40,8 +39,8 @@ class AuthService:
             raise ValueError("Invalid email or password")
         await self.user_repo.update_last_login(user)
         return {
-            "access_token": create_access_token({"sub": str(user.id)}),
-            "refresh_token": create_refresh_token({"sub": str(user.id)}),
+            "access_token": create_access_token({"sub": str(user.id)}, token_version=user.token_version),
+            "refresh_token": create_refresh_token({"sub": str(user.id)}, token_version=user.token_version),
             "user": user,
         }
 
@@ -55,7 +54,12 @@ class AuthService:
         user = await self.user_repo.get_by_id(int(user_id))
         if not user or not user.is_active:
             raise ValueError("User not found or inactive")
+        if payload.get("token_version", 0) != user.token_version:
+            await self.user_repo.update(user, token_version=user.token_version + 1)
+            raise ValueError("Refresh token has been invalidated")
+        new_version = user.token_version + 1
+        user = await self.user_repo.update(user, token_version=new_version)
         return {
-            "access_token": create_access_token({"sub": str(user.id)}),
-            "refresh_token": create_refresh_token({"sub": str(user.id)}),
+            "access_token": create_access_token({"sub": str(user.id)}, token_version=new_version),
+            "refresh_token": create_refresh_token({"sub": str(user.id)}, token_version=new_version),
         }

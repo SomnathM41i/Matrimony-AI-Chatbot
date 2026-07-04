@@ -12,4 +12,4 @@ pydantic-settings>=2.2
 python-dotenv>=1.0
 python-multipart>=0.0.9
 certifi>=2024.12
-loguru>=0.7
+slowapi>=0.1.9

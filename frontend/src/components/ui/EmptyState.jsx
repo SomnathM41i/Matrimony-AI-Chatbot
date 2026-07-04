@@ -2,7 +2,7 @@ import { Bot } from 'lucide-react'
 
 export default function EmptyState() {
   return (
-    <div className="flex flex-col items-center justify-center h-full text-center px-6">
+    <div className="flex flex-col items-center text-center px-6">
       <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary-600/30 to-primary-800/30 border border-primary-600/30 flex items-center justify-center mb-6">
         <Bot className="w-8 h-8 text-primary-400" />
       </div>

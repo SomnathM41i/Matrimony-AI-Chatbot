@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.dependencies import get_db, get_authenticated_user
 from app.schemas.auth_schema import (
@@ -8,15 +8,18 @@ from app.schemas.common_schema import SuccessResponse
 from app.services.auth_service import AuthService
 from app.repositories.user_repository import UserRepository
 from app.models.user_model import User
+from app.main import limiter
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 @router.post("/register", response_model=dict)
-async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
+@limiter.limit("5/minute")
+async def register(request: Request, body: RegisterRequest, db: AsyncSession = Depends(get_db)):
     auth_service = AuthService(UserRepository(db))
     try:
         result = await auth_service.register(body.name, body.email, body.password)
+        await db.commit()
         return {
             "access_token": result["access_token"],
             "refresh_token": result["refresh_token"],
@@ -28,10 +31,12 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/login", response_model=dict)
-async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
+@limiter.limit("10/minute")
+async def login(request: Request, body: LoginRequest, db: AsyncSession = Depends(get_db)):
     auth_service = AuthService(UserRepository(db))
     try:
         result = await auth_service.login(body.email, body.password)
+        await db.commit()
         return {
             "access_token": result["access_token"],
             "refresh_token": result["refresh_token"],

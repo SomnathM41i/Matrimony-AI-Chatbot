@@ -1,7 +1,7 @@
 import logging
 import sys
 
-logger = logging.getLogger("ena_chatbot")
+logger = logging.getLogger("myvivahai")
 logger.setLevel(logging.INFO)
 
 handler = logging.StreamHandler(sys.stdout)

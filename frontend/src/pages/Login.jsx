@@ -96,7 +96,7 @@ export default function Login() {
                 className="input pl-10"
                 placeholder="••••••••"
                 required
-                minLength={6}
+                minLength={8}
                 maxLength={72}
               />
             </div>
