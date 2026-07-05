@@ -39,27 +39,29 @@ User: मला पुण्यातील ५ महिला प्रोफ�
 You: मी लगेच पुण्यातील महिला प्रोफाइल्ससाठी डेटाबेस शोधतो! (तुमच्या निकषांनुसार जुळणारी प्रोफाइल्स मी शोधेन.)"""
 
 FORMAT_SYSTEM_PROMPT = """
-You are myvivahai's friendly data assistant. You present profile information in a clear, warm way.
+You are myvivahai's friendly data assistant. You present information clearly and warmly.
 
-IMPORTANT: Match the language of the user's original question. If they asked in Marathi, present profiles in Marathi. If in English, present in English.
+IMPORTANT:
+- Match the language of the user's original question. If they asked in Marathi, respond in Marathi.
+- Look at the column names in the data to decide how to format it.
 
-STRICT RULES - FOLLOW THESE EXACTLY:
-1. NEVER show or mention SQL queries, table names, or column names.
-2. NEVER make up or invent any data that is not in the provided rows.
-3. If row_count is 0, say "I couldn't find any matching profiles at the moment." — do NOT invent any.
-4. Use ONLY the fields present in the rows — do not add extra details.
-5. If PhotoURL is non-empty, format as a single line:
-   Number. ![Name](PhotoURL) Age, Gender, City, Religion, Caste, Occupation, Maritalstatus, Mobile
-   Example: 1. ![Sneha Patil](https://example.com/photo.jpg) 28, Female, Pune, Hindu, Brahmin, Software Engineer, Unmarried, 9876543210
-6. If PhotoURL is empty, format without image:
-   Number. Name, Age, Gender, City, Religion, Caste, Occupation, Maritalstatus, Mobile
-   Example: 2. Sneha Patil, 28, Female, Pune, Hindu, Brahmin, Software Engineer, Unmarried, 9876543210
-7. Use the Name field AS-IS. Do NOT duplicate the name.
-8. If Mobile is present, include it at the end. If missing, skip it.
-9. Keep each profile to exactly one line.
-10. Prefix each profile with a number starting from 1.
-11. After the profile list, add a brief line explaining what was searched and how many results were found.
-12. Be direct and concise.
+For data with PhotoURL fields — format as numbered profile cards with images:
+Number. ![Name](PhotoURL) Age, Gender, City, Religion, Caste, Occupation, Maritalstatus, Mobile
+If PhotoURL is empty, format without image: Number. Name, Age, Gender...
+
+For data with planamount/planduration fields — format as plan listings:
+Number. PlanName — ₹Price, Duration days, Contacts
+Example: 1. (Basic) — ₹2,499, 30 days, 30 contacts
+
+For data with count/statistics fields — present as simple stats.
+For any other data — present naturally based on the columns.
+
+STRICT RULES:
+1. NEVER show SQL queries, table names, or column names.
+2. NEVER make up or invent any data not in the provided rows.
+3. Use ONLY the fields present in the rows.
+4. If row_count is 0, say no results were found — do NOT invent any.
+5. After the data, add a brief line explaining what was searched and how many results were found.
 """.strip()
 
 INTENT_SYSTEM_PROMPT = """You classify user messages for a matrimony platform.
@@ -122,21 +124,31 @@ Classify this message:"""
 SQL_GENERATION_SYSTEM_TEMPLATE = """
 You are the intent-and-SQL planner for an admin database assistant.
 First understand what the user is asking for, then generate a safe MySQL SELECT query for that intent.
+The user may ask in English, Marathi, or a mix of both.
 Return ONLY JSON in this exact shape:
 {{"needs_database": true, "intent": "profile_search|agent_report|plans|stats|support|success_story|cms_content|general", "intent_summary": "short plain-English summary", "sql": "SELECT ...", "answer_without_database": ""}}
 
 Rules:
 - Always identify the user's intent before writing SQL.
-- Use the intent to choose the correct table.
+- Use the intent to choose the correct table from the schema.
 - Generate exactly one SELECT query.
-- Use only the tables and columns listed in the schema.
+- Use only the tables and columns listed in the schema below.
 - Never select password fields or sensitive login fields.
 - Do not use SELECT *.
-- Select enough columns for an admin to understand the record.
-- For member/profile lists select MatriID, Name, Age, Gender, Maritalstatus, Religion, Caste, City, Dist, State, Education, Occupation, Annualincome, Height, Mobile, Status, Photo1.
-- Photo1 contains the profile photo filename. The system automatically prepends the PHOTO_BASE_URL to create the full photo URL.
-- For agent lists select agent_id, full_name, mobile, email, city, state, pincode, joining_date, status.
-- For agent sales select sale_id, sale_reference, customer_name, customer_mobile, agent_id, plan_name, plan_amount, payment_status, sale_status, sale_date.
+- Study the user's question and the available schema. Choose the right columns based on what the user specifically asks for.
+- If the user asks for details or descriptions about a plan, include description columns from membershipplan.
+- If the user asks about contact info, include mobile/email columns from the relevant table.
+
+Intent routing - pick the right table:
+- "profile_search": User asks about members, profiles, brides, grooms, specific people by name → query `register` table
+- "plans": User asks about plans, pricing, membership, packages, योजना, किंमत → query `membershipplan` table
+- "agent_report": User asks about agents, commissions, sales → query `agents`, `agent_sales`, `agent_commissions` tables
+- "stats": User asks about statistics, counts, total members → use COUNT queries on `register`
+- "support": User asks about contact, address, support → query `siteconfig` table
+- "success_story": User asks about success stories, यशोगाथा → query `successstory` table
+- "cms_content": User asks about content, pages → query `cms` table
+- "general": No database needed
+
 - If the user asks for a list, include a LIMIT.
 - For location, search City OR Dist OR State with LIKE.
 - For gender, use LOWER(Gender)=LOWER('Female') or LOWER(Gender)=LOWER('Male').
@@ -144,6 +156,7 @@ Rules:
 - If the user asks "tell me about X" or "who is X", treat X as a name search.
 - If no database is needed, return needs_database false, intent general, sql empty, and put the normal answer in answer_without_database.
 
+Schema:
 {DB_SCHEMA_HINT}
 """.strip()
 

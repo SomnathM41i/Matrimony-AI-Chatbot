@@ -112,17 +112,16 @@ def accumulate_usage(*usages):
 
 
 async def answer_database_question(message: str) -> dict:
-    plan, sql_usage = await generate_sql(message, settings.allowed_tables_set)
-    if not plan.get("needs_database", True):
-        return {"content": plan.get("answer_without_database", ""), "usage": sql_usage}
-    sql_result = await execute_llm_sql(plan.get("sql", ""))
+    sql_plan, sql_usage = await generate_sql(message, settings.allowed_tables_set)
+    if not sql_plan.get("needs_database", True):
+        return {"content": sql_plan.get("answer_without_database", ""), "usage": sql_usage}
+    sql_result = await execute_llm_sql(sql_plan.get("sql", ""))
 
     if sql_result["row_count"] > settings.MAX_ROWS_BEFORE_NARROW:
         return {
             "content": (
-                f"I found {sql_result['row_count']} matching profiles, which is too many to show at once. "
-                "Please narrow your search by adding more specific criteria — "
-                "for example, a city name, age range, religion, or marital status."
+                f"I found {sql_result['row_count']} results, which is too many to show at once. "
+                "Please narrow your search by adding more specific criteria."
             ),
             "usage": sql_usage,
         }
@@ -134,8 +133,7 @@ async def answer_database_question(message: str) -> dict:
         return {
             "content": (
                 "Your search returned too many results for me to process in one go. "
-                "Please narrow your search by adding more specific criteria — "
-                "for example, a city name, age range, religion, or marital status."
+                "Please narrow your search by adding more specific criteria."
             ),
             "usage": sql_usage,
         }
