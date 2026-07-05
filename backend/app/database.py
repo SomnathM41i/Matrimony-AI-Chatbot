@@ -1,6 +1,7 @@
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.pool import NullPool
 from app.config import settings
 from app.core.logger import logger
 import os
@@ -11,8 +12,7 @@ engine = create_async_engine(
     settings.DATABASE_URL,
     echo=settings.is_production is False,
     connect_args={"check_same_thread": False} if "sqlite" in settings.DATABASE_URL else {},
-    pool_recycle=3600,
-    pool_size=settings.DB_POOL_SIZE,
+    poolclass=NullPool,
 )
 
 AsyncSessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
