@@ -11,6 +11,9 @@ engine = create_async_engine(
     settings.DATABASE_URL,
     echo=settings.is_production is False,
     connect_args={"check_same_thread": False} if "sqlite" in settings.DATABASE_URL else {},
+    pool_pre_ping=True,
+    pool_recycle=3600,
+    pool_size=settings.DB_POOL_SIZE,
 )
 
 AsyncSessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
@@ -45,10 +48,16 @@ async def get_session():
         try:
             yield session
         except Exception:
-            await session.rollback()
+            try:
+                await session.rollback()
+            except Exception:
+                pass
             raise
         finally:
-            await session.close()
+            try:
+                await session.close()
+            except Exception:
+                pass
 
 
 async def get_db_session():
