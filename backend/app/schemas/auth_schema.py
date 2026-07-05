@@ -60,8 +60,10 @@ class UserResponse(BaseModel):
     id: int
     email: str
     name: str
+    role: str = "user"
+    is_active: bool = True
+    is_verified: bool = False
     profile_image: Optional[str] = None
-    is_verified: bool
     created_at: datetime
 
     model_config = {"from_attributes": True}

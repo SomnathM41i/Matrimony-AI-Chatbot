@@ -2,7 +2,8 @@ import re
 
 
 DB_WORDS = [
-    "member", "members", "profile", "profiles", "female", "male", "girl", "boy",
+    "member", "members", "profile", "profiles", "female", "male",
+    "girl", "girls", "boy", "boys", "lady", "ladies", "woman", "women", "men",
     "bride", "groom", "list", "show", "find", "search", "city", "location",
     "pune", "sangli", "mumbai", "plan", "plans", "price", "pricing", "stats",
     "statistics", "count", "total", "success", "story", "contact", "support",
@@ -21,13 +22,16 @@ DB_WORDS = [
     "education", "educated", "occupation", "job", "business", "salary",
     "income", "annual income", "age", "years old", "marital status",
     "unmarried", "divorced", "widow", "widower",
-    # Marathi keywords
-    "महिला", "पुरुष", "प्रोफाइल", "सदस्य", "यादी", "शहर", "ठिकाण",
-    "पुणे", "मुंबई", "सांगली", "योजना", "किंमत", "यशोगाथा",
-    "जात", "धर्म", "शिक्षण", "नोकरी", "व्यवसाय", "उत्पन्न",
-    "वय", "वैवाहिक", "स्थिती", "दाखवा", "शोधा", "कोण", "माहिती",
-    "तपशील", "नाव", "मोबाईल", "पत्ता", "संपर्क", "सपोर्ट",
-    "एजंट", "कमिशन", "विक्री", "ग्राहक",
+    # Marathi gender & profile keywords
+    "महिला", "पुरुष", "मुली", "मुले", "मुलगा", "मुलगी", "बायका",
+    "स्त्री", "वधू", "वर", "बायको", "नवरा",
+    "प्रोफाइल", "प्रोफाईल", "सदस्य", "यादी", "शहर",
+    "ठिकाण", "पुणे", "मुंबई", "सांगली", "योजना", "किंमत",
+    "यशोगाथा", "जात", "धर्म", "शिक्षण", "नोकरी", "व्यवसाय",
+    "उत्पन्न", "वय", "वैवाहिक", "स्थिती", "दाखवा", "शोधा",
+    "कोण", "माहिती", "तपशील", "नाव", "मोबाईल", "पत्ता",
+    "संपर्क", "सपोर्ट", "एजंट", "कमिशन", "विक्री", "ग्राहक",
+    "नोंदणी", "आजची", "एकूण", "किती",
 ]
 
 

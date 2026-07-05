@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  MessageSquare, History, Plus, LogOut, Trash2, Menu, X, Database, Wifi, WifiOff, Brain,
+  MessageSquare, History, Plus, LogOut, Trash2, Menu, X, Database, Wifi, WifiOff, Brain, Shield,
 } from 'lucide-react'
 import { useHistory } from '../../hooks/useHistory'
 import { useAuth } from '../../hooks/useAuth'
@@ -72,6 +72,19 @@ export default function Sidebar() {
           <History className="w-4 h-4" />
           History
         </button>
+        {user?.role === 'admin' && (
+          <button
+            onClick={() => { navigate('/admin'); setOpen(false) }}
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
+              location.pathname.startsWith('/admin')
+                ? 'bg-purple-600/20 text-purple-300'
+                : 'text-surface-400 hover:text-surface-200 hover:bg-surface-800'
+            }`}
+          >
+            <Shield className="w-4 h-4" />
+            Admin
+          </button>
+        )}
       </nav>
 
       <div className="flex-1 overflow-y-auto p-3 space-y-1">

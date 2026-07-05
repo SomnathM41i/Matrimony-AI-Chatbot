@@ -5,11 +5,17 @@ import { setNavigate } from '../services/navigate'
 import ErrorBoundary from '../components/ErrorBoundary'
 import AuthLayout from '../layouts/AuthLayout'
 import ChatLayout from '../layouts/ChatLayout'
+import AdminLayout from '../layouts/AdminLayout'
+import AdminGuard from '../components/admin/AdminGuard'
 import Login from '../pages/Login'
 import Landing from '../pages/Landing'
 import Chat from '../pages/Chat'
 import History from '../pages/History'
 import PartnerPreferences from '../pages/PartnerPreferences'
+import AdminDashboard from '../pages/admin/Dashboard'
+import AdminUsers from '../pages/admin/Users'
+import AdminProfiles from '../pages/admin/Profiles'
+import AdminConversations from '../pages/admin/Conversations'
 
 
 function NavigateSetter() {
@@ -65,10 +71,20 @@ export const router = createBrowserRouter([
         element: <Guard><ChatLayout /></Guard>,
         children: [
           { index: true, element: <Navigate to="/app/chat" replace /> },
-      { path: 'chat', element: <Chat /> },
-      { path: 'chat/:conversationId', element: <Chat /> },
+          { path: 'chat', element: <Chat /> },
+          { path: 'chat/:conversationId', element: <Chat /> },
           { path: 'history', element: <History /> },
           { path: 'partner-preferences', element: <PartnerPreferences /> },
+        ],
+      },
+      {
+        path: '/admin',
+        element: <AdminGuard><AdminLayout /></AdminGuard>,
+        children: [
+          { index: true, element: <AdminDashboard /> },
+          { path: 'users', element: <AdminUsers /> },
+          { path: 'profiles', element: <AdminProfiles /> },
+          { path: 'conversations', element: <AdminConversations /> },
         ],
       },
     ],

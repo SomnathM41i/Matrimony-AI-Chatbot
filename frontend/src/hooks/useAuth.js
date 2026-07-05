@@ -12,9 +12,9 @@ export function useAuth() {
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['me'],
     queryFn: getMe,
-    enabled: !!token && !user,
+    enabled: !!token,
     retry: false,
-    staleTime: 60000,
+    staleTime: 30000,
   })
 
   useEffect(() => {
