@@ -117,6 +117,12 @@ async def answer_database_question(message: str) -> dict:
         return {"content": sql_plan.get("answer_without_database", ""), "usage": sql_usage}
     sql_result = await execute_llm_sql(sql_plan.get("sql", ""))
 
+    if sql_result["row_count"] == 0:
+        return {
+            "content": "I couldn't find any matching results for your search. Try different criteria like a different city, caste, or age range.",
+            "usage": sql_usage,
+        }
+
     if sql_result["row_count"] > settings.MAX_ROWS_BEFORE_NARROW:
         return {
             "content": (

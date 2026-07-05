@@ -136,7 +136,8 @@ Rules:
 - Never select password fields or sensitive login fields.
 - Do not use SELECT *.
 - Study the user's question and the available schema. Choose the right columns based on what the user specifically asks for.
-- If the user asks for details or descriptions about a plan, include description columns from membershipplan.
+- For profile_search (register table): ALWAYS include Photo1 column so profile photos can be displayed. Also include Name, Age, Gender, Maritalstatus, Religion, Caste, City, Mobile, Status.
+- For plans (membershipplan table): ALWAYS include description1, description2, description3, description4, description5, description6, description7 columns so plan features/descriptions can be displayed.
 - If the user asks about contact info, include mobile/email columns from the relevant table.
 
 Intent routing - pick the right table:
