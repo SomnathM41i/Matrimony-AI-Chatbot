@@ -27,13 +27,19 @@ DB_WORDS = [
 def is_database_question(message: str) -> bool:
     msg = message.lower()
 
-    if any(word in msg for word in DB_WORDS):
-        return True
+    if not any(word in msg for word in DB_WORDS):
+        name_match = re.search(r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b', message)
+        if name_match:
+            matched = name_match.group()
+            words = matched.split()
+            if len(words) >= 3 or (len(words) >= 2 and re.search(r'[aeiou]', matched, re.IGNORECASE)):
+                return True
+        return False
 
-    name_match = re.search(r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b', message)
-    if name_match:
-        matched = name_match.group()
-        words = matched.split()
-        if len(words) >= 3 or (len(words) >= 2 and re.search(r'[aeiou]', matched, re.IGNORECASE)):
-            return True
-    return False
+    purchase_intent = any(w in msg for w in ["how", "where", "link", "steps", "steps to"])
+    buy_word = any(w in msg for w in ["buy", "purchase", "payment", "pay"])
+    plan_word = "plan" in msg or "plans" in msg
+    if purchase_intent and buy_word and plan_word:
+        return False
+
+    return True

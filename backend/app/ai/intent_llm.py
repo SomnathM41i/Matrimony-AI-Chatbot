@@ -17,9 +17,7 @@ async def detect_intent_with_llm(message: str) -> bool:
             max_tokens=settings.INTENT_MAX_TOKENS,
         )
         label = result.get("content", "").strip().lower()
-        if label == "database":
-            return True
+        return label == "database"
     except Exception as e:
-        logger.warning(f"LLM intent detection failed, checking keywords: {e}")
-
-    return is_database_question(message)
+        logger.warning(f"LLM intent detection failed, falling back to keywords: {e}")
+        return is_database_question(message)

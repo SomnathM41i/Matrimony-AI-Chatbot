@@ -4,7 +4,7 @@ __pycache__/
 venv/
 .env
 *.db
-
+myvivahai.md
 # Node
 node_modules/
 dist/

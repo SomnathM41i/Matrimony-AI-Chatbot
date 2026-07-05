@@ -1,7 +1,6 @@
 import json
 from app.config import settings
 from app.ai.llm_client import call_llm, call_groq
-from app.ai.intent_detector import is_database_question
 from app.core.logger import logger
 from app.core.prompts import BASE_SYSTEM_PROMPT, FORMAT_SYSTEM_PROMPT
 
@@ -31,8 +30,6 @@ def _truncate_payload(payload: dict) -> str:
 
 
 async def get_general_response(message: str) -> dict:
-    if is_database_question(message):
-        return {"content": "I'll search the database for that right away.", "usage": None}
     return await call_llm(BASE_SYSTEM_PROMPT, message)
 
 

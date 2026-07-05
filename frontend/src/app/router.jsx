@@ -9,6 +9,7 @@ import Login from '../pages/Login'
 import Landing from '../pages/Landing'
 import Chat from '../pages/Chat'
 import History from '../pages/History'
+import PartnerPreferences from '../pages/PartnerPreferences'
 
 
 function NavigateSetter() {
@@ -67,6 +68,7 @@ export const router = createBrowserRouter([
       { path: 'chat', element: <Chat /> },
       { path: 'chat/:conversationId', element: <Chat /> },
           { path: 'history', element: <History /> },
+          { path: 'partner-preferences', element: <PartnerPreferences /> },
         ],
       },
     ],

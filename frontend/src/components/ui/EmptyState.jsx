@@ -1,6 +1,9 @@
-import { Bot } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Bot, Heart, Sparkles } from 'lucide-react'
 
 export default function EmptyState() {
+  const navigate = useNavigate()
+
   return (
     <div className="flex flex-col items-center text-center px-6">
       <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary-600/30 to-primary-800/30 border border-primary-600/30 flex items-center justify-center mb-6">
@@ -13,7 +16,29 @@ export default function EmptyState() {
         Ask me anything about members, pricing plans, success stories, or general
         matrimony questions. I can query the database and provide real-time answers.
       </p>
-      <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-md">
+
+      <button
+        onClick={() => navigate('/app/partner-preferences')}
+        className="mt-6 w-full max-w-md group relative overflow-hidden rounded-xl bg-gradient-to-r from-pink-600/20 via-rose-600/20 to-pink-600/20 border border-pink-500/30 hover:border-pink-400/50 px-5 py-4 transition-all duration-300"
+      >
+        <div className="absolute inset-0 bg-gradient-to-r from-pink-500/5 to-rose-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+        <div className="relative flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-pink-500/30 to-rose-500/30 border border-pink-500/30 flex items-center justify-center flex-shrink-0">
+            <Heart className="w-5 h-5 text-pink-400" />
+          </div>
+          <div className="text-left flex-1 min-w-0">
+            <p className="text-sm font-semibold text-pink-200 flex items-center gap-2">
+              Your Partner Preferences
+              <Sparkles className="w-3.5 h-3.5 text-yellow-400" />
+            </p>
+            <p className="text-xs text-surface-400 mt-0.5">
+              Set preferences & see your perfect partner list
+            </p>
+          </div>
+        </div>
+      </button>
+
+      <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-md">
         {[
           'Show me 5 female profiles in Pune',
           'What are your membership plans?',
