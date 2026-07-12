@@ -111,30 +111,39 @@ def accumulate_usage(*usages):
     return total
 
 
-async def answer_database_question(message: str) -> dict:
-    sql_plan, sql_usage = await generate_sql(message, settings.allowed_tables_set)
+async def answer_database_question(message: str, history: list[dict] | None = None) -> dict:
+    sql_plan, sql_usage = await generate_sql(message, settings.allowed_tables_set, history=history)
     if not sql_plan.get("needs_database", True):
         return {"content": sql_plan.get("answer_without_database", ""), "usage": sql_usage}
     sql_result = await execute_llm_sql(sql_plan.get("sql", ""))
 
     if sql_result["row_count"] == 0:
+        from app.services.llm_service import format_db_notice
+        notice = await format_db_notice(
+            message,
+            "No matching results were found. Suggest trying a different city, caste, or age range.",
+            history=history,
+        )
         return {
-            "content": "I couldn't find any matching results for your search. Try different criteria like a different city, caste, or age range.",
-            "usage": sql_usage,
+            "content": notice["content"],
+            "usage": accumulate_usage(sql_usage, notice.get("usage", {})),
         }
 
     if sql_result["row_count"] > settings.MAX_ROWS_BEFORE_NARROW:
+        from app.services.llm_service import format_db_notice
+        notice = await format_db_notice(
+            message,
+            f"The search found {sql_result['row_count']} results, too many to show at once. Ask the user to add more specific criteria.",
+            history=history,
+        )
         return {
-            "content": (
-                f"I found {sql_result['row_count']} results, which is too many to show at once. "
-                "Please narrow your search by adding more specific criteria."
-            ),
-            "usage": sql_usage,
+            "content": notice["content"],
+            "usage": accumulate_usage(sql_usage, notice.get("usage", {})),
         }
 
     from app.services.llm_service import format_db_result
     try:
-        formatted = await format_db_result(message, sql_result)
+        formatted = await format_db_result(message, sql_result, history=history)
     except GroqPayloadTooLargeError:
         return {
             "content": (

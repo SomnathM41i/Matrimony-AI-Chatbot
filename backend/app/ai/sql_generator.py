@@ -74,12 +74,13 @@ def sanitize_rows(rows: list[dict]) -> list[dict]:
     return clean_rows
 
 
-async def generate_sql(message: str, allowed_tables: set) -> tuple[dict, dict]:
+async def generate_sql(message: str, allowed_tables: set, history: list[dict] | None = None) -> tuple[dict, dict]:
+    sql_messages = [{"role": "system", "content": SQL_GENERATION_SYSTEM}]
+    if history:
+        sql_messages.extend(history)
+    sql_messages.append({"role": "user", "content": message})
     result = await call_groq(
-        messages=[
-            {"role": "system", "content": SQL_GENERATION_SYSTEM},
-            {"role": "user", "content": message},
-        ],
+        messages=sql_messages,
         temperature=settings.SQL_TEMPERATURE,
         max_tokens=settings.SQL_MAX_TOKENS,
     )

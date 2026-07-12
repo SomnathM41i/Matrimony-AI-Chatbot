@@ -30,7 +30,8 @@ class ChatRepository:
 
     async def create(
         self, conversation_id: int, user_id: int, role: str, content: str,
-        metadata_json: str | None = None
+        metadata_json: str | None = None,
+        prompt_tokens: int = 0, completion_tokens: int = 0, total_tokens: int = 0,
     ) -> ChatMessage:
         msg = ChatMessage(
             conversation_id=conversation_id,
@@ -38,6 +39,9 @@ class ChatRepository:
             role=role,
             content=content,
             metadata_json=metadata_json,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=total_tokens,
         )
         self.db.add(msg)
         await self.db.flush()

@@ -29,23 +29,44 @@ def _truncate_payload(payload: dict) -> str:
     return result
 
 
-async def get_general_response(message: str) -> dict:
-    return await call_llm(BASE_SYSTEM_PROMPT, message)
+async def get_general_response(message: str, history: list[dict] | None = None) -> dict:
+    current_message = (
+        "CURRENT USER MESSAGE (detect language from this text; history is context only):\n"
+        + message
+    )
+    return await call_llm(BASE_SYSTEM_PROMPT, current_message, history=history)
 
 
-async def format_db_result(message: str, sql_result: dict) -> dict:
+async def format_db_result(message: str, sql_result: dict, history: list[dict] | None = None) -> dict:
     payload = {
         "user_question": message,
+        "language_instruction": (
+            "Reply in the language of user_question, unless user_question explicitly "
+            "requests a different target language."
+        ),
         "executed_sql": sql_result["sql"],
         "row_count": sql_result["row_count"],
         "rows": sql_result["rows"],
     }
     payload_str = _truncate_payload(payload)
+    fmt_messages = [{"role": "system", "content": FORMAT_SYSTEM_PROMPT}]
+    if history:
+        fmt_messages.extend(history)
+    fmt_messages.append({"role": "user", "content": payload_str})
     return await call_groq(
-        messages=[
-            {"role": "system", "content": FORMAT_SYSTEM_PROMPT},
-            {"role": "user", "content": payload_str},
-        ],
+        messages=fmt_messages,
         temperature=settings.FORMAT_TEMPERATURE,
         max_tokens=settings.FORMAT_MAX_TOKENS,
     )
+
+
+async def format_db_notice(message: str, notice: str, history: list[dict] | None = None) -> dict:
+    """Translate a database status notice without changing its meaning."""
+    system_prompt = (
+        "You are myvivahai's multilingual assistant. Rewrite the supplied NOTICE as a "
+        "short, warm response in the language of the CURRENT USER MESSAGE. If the user "
+        "explicitly requests another target language, use that language. Do not add facts, "
+        "profiles, or database details. Return only the response."
+    )
+    current_message = f"CURRENT USER MESSAGE:\n{message}\n\nNOTICE:\n{notice}"
+    return await call_llm(system_prompt, current_message, history=history)

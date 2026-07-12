@@ -94,11 +94,14 @@ async def call_llm(
     user_message: str,
     temperature: float | None = None,
     max_tokens: int | None = None,
+    history: list[dict] | None = None,
 ) -> dict:
     messages = [
         {"role": "system", "content": system_prompt[:settings.LLM_PROMPT_TRUNCATION]},
-        {"role": "user", "content": user_message[:settings.LLM_MESSAGE_TRUNCATION]},
     ]
+    if history:
+        messages.extend(history)
+    messages.append({"role": "user", "content": user_message[:settings.LLM_MESSAGE_TRUNCATION]})
     try:
         return await call_groq(messages, temperature=temperature, max_tokens=max_tokens)
     except httpx.TimeoutException:

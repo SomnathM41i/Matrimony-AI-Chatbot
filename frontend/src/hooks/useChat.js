@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { sendMessage, getConversation } from '../services/chatService'
-import { useTokenStore } from '../app/store'
+import { useTokenStore, useAuthStore } from '../app/store'
 
 export function useChat(conversationId = null, onNewConversation) {
   const [messages, setMessages] = useState([])
@@ -66,7 +66,13 @@ export function useChat(conversationId = null, onNewConversation) {
         activeConvId.current = data.conversation_id
         onNewConversation?.(data.conversation_id)
       }
-      if (data.usage?.total_tokens > 0) setLastUsage(data.usage)
+      if (data.usage?.total_tokens > 0) {
+        setLastUsage(data.usage)
+        const store = useAuthStore.getState()
+        if (store.user) {
+          store.setUser({ ...store.user, total_tokens: (store.user.total_tokens || 0) + data.usage.total_tokens })
+        }
+      }
       queryClient.invalidateQueries({ queryKey: ['conversations'] })
     },
     onError: (error, variables) => {

@@ -65,6 +65,7 @@ class UserResponse(BaseModel):
     is_verified: bool = False
     profile_image: Optional[str] = None
     created_at: datetime
+    total_tokens: int = 0
 
     model_config = {"from_attributes": True}
 

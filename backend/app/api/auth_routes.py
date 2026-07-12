@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func
 from app.dependencies import get_db, get_authenticated_user
 from app.schemas.auth_schema import (
     LoginRequest, RegisterRequest, TokenResponse, UserResponse, RefreshRequest
@@ -8,6 +9,7 @@ from app.schemas.common_schema import SuccessResponse
 from app.services.auth_service import AuthService
 from app.repositories.user_repository import UserRepository
 from app.models.user_model import User
+from app.models.chat_model import ChatMessage
 from app.main import limiter
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -61,8 +63,18 @@ async def refresh(body: RefreshRequest, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/me", response_model=UserResponse)
-async def get_me(user: User = Depends(get_authenticated_user)):
-    return UserResponse.model_validate(user)
+async def get_me(
+    user: User = Depends(get_authenticated_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(func.coalesce(func.sum(ChatMessage.total_tokens), 0))
+        .where(ChatMessage.user_id == user.id)
+    )
+    total_tokens = result.scalar() or 0
+    resp = UserResponse.model_validate(user)
+    resp.total_tokens = total_tokens
+    return resp
 
 
 @router.post("/logout", response_model=SuccessResponse)

@@ -77,7 +77,10 @@ function splitContent(content) {
 
 export default function ChatMessage({ message, onRetry }) {
   const isUser = message.role === 'user'
-  const isError = message.isError || message.content.startsWith('Sorry, I encountered an error')
+  const isError = message.isError || message.content.startsWith("Sorry, I couldn't process")
+    || message.content.startsWith('Sorry, the assistant is receiving')
+    || message.content.startsWith('Sorry, the request took too long')
+    || message.content.startsWith("Sorry, I couldn't understand")
 
   const parts = useMemo(() => {
     if (isUser) return null

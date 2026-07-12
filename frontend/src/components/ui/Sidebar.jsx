@@ -8,7 +8,6 @@ import { useHistory } from '../../hooks/useHistory'
 import { useAuth } from '../../hooks/useAuth'
 import { truncate, formatDate } from '../../utils/formatter'
 import { useDatabaseStatus } from '../../hooks/useDatabaseStatus'
-import { useTokenStore } from '../../app/store'
 
 export default function Sidebar() {
   const [open, setOpen] = useState(false)
@@ -17,7 +16,6 @@ export default function Sidebar() {
   const { conversations, deleteConversation } = useHistory()
   const { user, logout } = useAuth()
   const { dbConnected, loading } = useDatabaseStatus()
-  const lastUsage = useTokenStore((s) => s.lastUsage)
 
   const currentConvId = location.pathname.match(/\/app\/chat\/([^/]+)/)?.[1]
 
@@ -136,12 +134,12 @@ export default function Sidebar() {
             </span>
           )}
         </div>
-        {lastUsage && (
+        {user?.total_tokens > 0 && (
           <div className="flex items-center gap-2">
             <Brain className="w-3.5 h-3.5 text-primary-400" />
             <span className="text-xs text-surface-500">Tokens used</span>
             <span className="ml-auto text-xs font-mono text-primary-400 tabular-nums">
-              {lastUsage.total_tokens.toLocaleString()}
+              {user.total_tokens.toLocaleString()}
             </span>
           </div>
         )}

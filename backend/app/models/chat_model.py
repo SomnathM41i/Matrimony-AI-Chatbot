@@ -13,6 +13,9 @@ class ChatMessage(Base):
     role = Column(String(32), nullable=False)
     content = Column(Text, nullable=False)
     metadata_json = Column(Text, nullable=True)
+    prompt_tokens = Column(Integer, default=0)
+    completion_tokens = Column(Integer, default=0)
+    total_tokens = Column(Integer, default=0)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     conversation = relationship("Conversation", back_populates="messages")
