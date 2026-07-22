@@ -7,6 +7,10 @@ from app.ai.sql_generator import generate_sql, validate_select_sql, sanitize_row
 from app.ai.llm_client import GroqPayloadTooLargeError
 
 
+class DatabaseQueryError(RuntimeError):
+    """Raised when the matrimony database cannot execute a query."""
+
+
 def _build_connection_args():
     args = {
         "host": settings.DB_HOST,
@@ -49,17 +53,21 @@ def _sync_get_connection():
 
 
 def _sync_safe_query(sql: str, params: tuple | None = None, fetch_one: bool = False):
+    conn = None
+    cur = None
     try:
         conn = _sync_get_connection()
         cur = conn.cursor(dictionary=True)
         cur.execute(sql, params or ())
-        row = cur.fetchone() if fetch_one else cur.fetchall()
-        cur.close()
-        conn.close()
-        return row
+        return cur.fetchone() if fetch_one else cur.fetchall()
     except Exception as e:
         logger.error(f"DB query error: {e}")
-        return None
+        raise DatabaseQueryError("Database query failed") from e
+    finally:
+        if cur is not None:
+            cur.close()
+        if conn is not None:
+            conn.close()
 
 
 def _sync_check_connection() -> bool:
@@ -116,6 +124,15 @@ async def answer_database_question(message: str, history: list[dict] | None = No
     if not sql_plan.get("needs_database", True):
         return {"content": sql_plan.get("answer_without_database", ""), "usage": sql_usage}
     sql_result = await execute_llm_sql(sql_plan.get("sql", ""))
+    profile_rows = [
+        {"MatriID": row.get("MatriID"), "Name": row.get("Name")}
+        for row in sql_result["rows"]
+        if row.get("Name")
+    ]
+    metadata = {
+        "profile_candidates": profile_rows,
+        "selected_profile": profile_rows[0] if len(profile_rows) == 1 else None,
+    } if profile_rows else None
 
     if sql_result["row_count"] == 0:
         from app.services.llm_service import format_db_notice
@@ -127,6 +144,7 @@ async def answer_database_question(message: str, history: list[dict] | None = No
         return {
             "content": notice["content"],
             "usage": accumulate_usage(sql_usage, notice.get("usage", {})),
+            "metadata": metadata,
         }
 
     if sql_result["row_count"] > settings.MAX_ROWS_BEFORE_NARROW:
@@ -139,6 +157,7 @@ async def answer_database_question(message: str, history: list[dict] | None = No
         return {
             "content": notice["content"],
             "usage": accumulate_usage(sql_usage, notice.get("usage", {})),
+            "metadata": metadata,
         }
 
     from app.services.llm_service import format_db_result
@@ -155,6 +174,7 @@ async def answer_database_question(message: str, history: list[dict] | None = No
     return {
         "content": formatted["content"],
         "usage": accumulate_usage(sql_usage, formatted.get("usage", {})),
+        "metadata": metadata,
     }
 
 

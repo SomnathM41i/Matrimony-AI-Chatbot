@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '../app/store'
-import { getMe, login as loginApi, register as registerApi } from '../services/authService'
+import { getMe, login as loginApi, register as registerApi, logout as logoutApi } from '../services/authService'
 import { useNavigate } from 'react-router-dom'
 
 export function useAuth() {
@@ -24,7 +24,7 @@ export function useAuth() {
   }, [data])
 
   useEffect(() => {
-    if (isError && token) {
+    if (isError && token && error?.response?.status === 401) {
       storeLogout()
       queryClient.clear()
     }
@@ -33,7 +33,7 @@ export function useAuth() {
   const loginMutation = useMutation({
     mutationFn: ({ email, password }) => loginApi(email, password),
     onSuccess: (data) => {
-      setAuth(data.access_token, data.user)
+      setAuth(null, data.user)
       navigate('/app/chat', { replace: true })
     },
   })
@@ -41,12 +41,13 @@ export function useAuth() {
   const registerMutation = useMutation({
     mutationFn: ({ name, email, password }) => registerApi(name, email, password),
     onSuccess: (data) => {
-      setAuth(data.access_token, data.user)
+      setAuth(null, data.user)
       navigate('/app/chat', { replace: true })
     },
   })
 
-  const logout = () => {
+  const logout = async () => {
+    try { await logoutApi() } catch { /* clear local state even if the server is unavailable */ }
     storeLogout()
     queryClient.clear()
     navigate('/login', { replace: true })

@@ -48,6 +48,20 @@ def validate_select_sql(sql: str, allowed_tables: set) -> str:
     if re.search(r'\bselect\b.*\bfrom\b.*\bselect\b', lowered, re.DOTALL):
         raise ValueError("Subqueries are not allowed.")
 
+    select_clause = re.split(r'\bfrom\b', lowered, maxsplit=1)[0]
+    star_without_count = re.sub(r'\bcount\s*\(\s*\*\s*\)', '', select_clause)
+    if re.search(r'(?:\b[a-z_][a-z0-9_]*\s*\.\s*)?\*', star_without_count):
+        raise ValueError("Wildcard column selection is not allowed.")
+
+    forbidden_fields = set(SENSITIVE_FIELDS) | {
+        "passwordhash", "passcode", "secret", "secret_key", "api_key",
+        "token", "refresh_token", "bank_account", "accountnumber",
+    }
+    referenced_identifiers = set(re.findall(r'\b[a-z_][a-z0-9_]*\b', lowered))
+    blocked_fields = sorted(referenced_identifiers & forbidden_fields)
+    if blocked_fields:
+        raise ValueError("Sensitive database columns are not accessible.")
+
     referenced_tables = set(re.findall(r'\b(?:from|join)\s+`?([a-zA-Z0-9_]+)`?', lowered))
     if not referenced_tables:
         raise ValueError("No table found in SQL.")

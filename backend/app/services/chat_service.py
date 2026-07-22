@@ -3,14 +3,12 @@ from app.config import settings
 from app.repositories.conversation_repository import ConversationRepository
 from app.repositories.chat_repository import ChatRepository
 from app.services.llm_service import get_general_response
-from app.services.db_query_service import answer_database_question
+from app.services.db_query_service import answer_database_question, DatabaseQueryError
 from app.ai.intent_llm import detect_intent_with_llm
 from app.core.logger import logger
 from datetime import datetime, timezone
 import httpx
-
-HISTORY_LIMIT = 10
-
+import json
 
 def user_facing_error(error: Exception) -> str:
     """Map internal/provider failures to safe, actionable chat messages."""
@@ -21,6 +19,11 @@ def user_facing_error(error: Exception) -> str:
         )
     if isinstance(error, httpx.TimeoutException):
         return "Sorry, the request took too long to process. Please try again."
+    if isinstance(error, DatabaseQueryError):
+        return (
+            "Sorry, I couldn't access the profile database right now. "
+            "Please try again in a moment."
+        )
     if isinstance(error, ValueError) and str(error) == "Could not convert request into a database query.":
         return (
             "Sorry, I couldn't understand that request in the current context. "
@@ -39,7 +42,30 @@ class ChatService:
     async def _load_history(self, conversation_id: int) -> list[dict]:
         msgs = await self.msg_repo.list_by_conversation(conversation_id)
         history = []
-        for m in msgs[-HISTORY_LIMIT:]:
+        selected_profile = None
+        for m in reversed(msgs):
+            if not m.metadata_json:
+                continue
+            try:
+                metadata = json.loads(m.metadata_json)
+                selected_profile = metadata.get("selected_profile")
+            except (TypeError, ValueError):
+                continue
+            if selected_profile:
+                break
+
+        if selected_profile:
+            history.append({
+                "role": "system",
+                "content": (
+                    "Persistent conversation state: the most recently resolved profile is "
+                    f"Name={selected_profile.get('Name', '')}, "
+                    f"MatriID={selected_profile.get('MatriID', '')}. "
+                    "Use this only to resolve contextual references; query the database for facts."
+                ),
+            })
+
+        for m in msgs[-settings.CHAT_HISTORY_LIMIT:]:
             history.append({"role": m.role, "content": m.content})
         return history
 
@@ -65,12 +91,14 @@ class ChatService:
         )
 
         usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        response_metadata = None
         try:
             if await detect_intent_with_llm(message, history=history):
                 result = await answer_database_question(message, history=history)
             else:
                 result = await get_general_response(message, history=history)
             reply_text = result["content"]
+            response_metadata = result.get("metadata")
             if result.get("usage"):
                 u = result["usage"]
                 usage = {
@@ -87,6 +115,7 @@ class ChatService:
             user_id=user_id,
             role="assistant",
             content=reply_text,
+            metadata_json=json.dumps(response_metadata) if response_metadata else None,
             prompt_tokens=usage["prompt_tokens"],
             completion_tokens=usage["completion_tokens"],
             total_tokens=usage["total_tokens"],

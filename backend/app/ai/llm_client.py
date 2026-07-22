@@ -104,8 +104,6 @@ async def call_llm(
     messages.append({"role": "user", "content": user_message[:settings.LLM_MESSAGE_TRUNCATION]})
     try:
         return await call_groq(messages, temperature=temperature, max_tokens=max_tokens)
-    except httpx.TimeoutException:
-        return {"content": "Request timed out. Please try again with a simpler question.", "usage": {}}
     except Exception as e:
         logger.error(f"LLM call error: {e}")
-        return {"content": f"Error communicating with AI: {str(e)}", "usage": {}}
+        raise

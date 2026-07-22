@@ -6,6 +6,7 @@ from app.schemas.chat_schema import ChatRequest, ChatResponse, UsageInfo
 from app.services.chat_service import ChatService
 from app.models.user_model import User
 from app.main import limiter
+from app.core.logger import logger
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
@@ -38,5 +39,9 @@ async def send_message(
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Processing error: {str(e)}")
+    except Exception:
+        logger.exception("Unhandled chat API error")
+        raise HTTPException(
+            status_code=500,
+            detail="Sorry, the request could not be processed right now.",
+        )

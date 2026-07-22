@@ -117,16 +117,24 @@ async def list_profiles(
     admin: User = Depends(require_admin),
 ):
     conditions = []
+    params = []
     if search:
-        conditions.append(f"(Name LIKE '%{search}%' OR MatriID LIKE '%{search}%' OR Mobile LIKE '%{search}%')")
+        like = f"%{search}%"
+        conditions.append("(Name LIKE %s OR MatriID LIKE %s OR Mobile LIKE %s)")
+        params.extend([like, like, like])
     if gender:
-        conditions.append(f"LOWER(Gender)=LOWER('{gender}')")
+        conditions.append("LOWER(Gender)=LOWER(%s)")
+        params.append(gender)
     if status:
-        conditions.append(f"LOWER(Status)=LOWER('{status}')")
+        conditions.append("LOWER(Status)=LOWER(%s)")
+        params.append(status)
     if caste:
-        conditions.append(f"LOWER(Caste)=LOWER('{caste}')")
+        conditions.append("LOWER(Caste)=LOWER(%s)")
+        params.append(caste)
     if city:
-        conditions.append(f"(City LIKE '%{city}%' OR Dist LIKE '%{city}%')")
+        like = f"%{city}%"
+        conditions.append("(City LIKE %s OR Dist LIKE %s)")
+        params.extend([like, like])
 
     where = ""
     if conditions:
@@ -135,19 +143,19 @@ async def list_profiles(
     offset = (page - 1) * per_page
 
     count_sql = f"SELECT COUNT(*) as c FROM register {where}"
-    count_row = await asyncio.to_thread(safe_query, count_sql, fetch_one=True)
+    count_row = await asyncio.to_thread(safe_query, count_sql, tuple(params), True)
     total = count_row["c"] if count_row else 0
 
     data_sql = f"SELECT {PROFILE_FIELDS} FROM register {where} ORDER BY MatriID DESC LIMIT {per_page} OFFSET {offset}"
-    rows = await asyncio.to_thread(safe_query, data_sql)
+    rows = await asyncio.to_thread(safe_query, data_sql, tuple(params))
 
     return {"items": rows or [], "total": total, "page": page, "per_page": per_page}
 
 
 @router.get("/profiles/{matri_id}")
 async def get_profile(matri_id: str, admin: User = Depends(require_admin)):
-    sql = f"SELECT * FROM register WHERE MatriID = '{matri_id}'"
-    row = await asyncio.to_thread(safe_query, sql, fetch_one=True)
+    sql = f"SELECT {PROFILE_FIELDS} FROM register WHERE MatriID = %s"
+    row = await asyncio.to_thread(safe_query, sql, (matri_id,), True)
     if not row:
         raise HTTPException(status_code=404, detail="Profile not found")
     return row
@@ -162,17 +170,18 @@ async def update_profile_status(
     new_status = body.get("status", "").strip()
     if new_status not in ("Active", "Banned", "Paid", "Inactive"):
         raise HTTPException(status_code=400, detail="Invalid status. Use: Active, Banned, Paid, Inactive")
-    sql = f"UPDATE register SET Status='{new_status}' WHERE MatriID='{matri_id}'"
+    sql = "UPDATE register SET Status=%s WHERE MatriID=%s"
     from app.services.db_query_service import _sync_safe_query as sync_query
     conn = None
     try:
         from app.services.db_query_service import _sync_get_connection
         conn = _sync_get_connection()
         cur = conn.cursor()
-        cur.execute(sql)
+        cur.execute(sql, (new_status, matri_id))
         conn.commit()
+        affected = cur.rowcount
         cur.close()
-        if cur.rowcount == 0:
+        if affected == 0:
             raise HTTPException(status_code=404, detail="Profile not found")
     finally:
         if conn:

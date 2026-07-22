@@ -9,34 +9,20 @@ function loadUser() {
   }
 }
 
-function getToken() {
-  try {
-    return localStorage.getItem('access_token') || null
-  } catch {
-    return null
-  }
-}
-
 export const useAuthStore = create((set) => ({
   user: loadUser(),
-  token: getToken(),
+  token: !!loadUser(),
   setUser: (user) => {
     try { localStorage.setItem('auth_user', JSON.stringify(user)) } catch { /* private browsing */ }
     set({ user })
   },
-  setToken: (token) => {
-    try { localStorage.setItem('access_token', token) } catch { /* private browsing */ }
-    set({ token })
-  },
-  setAuth: (token, user) => {
-    try { localStorage.setItem('access_token', token) } catch { /* private browsing */ }
+  setAuth: (_token, user) => {
     try { localStorage.setItem('auth_user', JSON.stringify(user)) } catch { /* private browsing */ }
-    set({ token, user })
+    set({ token: true, user })
   },
   logout: () => {
-    try { localStorage.removeItem('access_token') } catch { /* private browsing */ }
     try { localStorage.removeItem('auth_user') } catch { /* private browsing */ }
-    set({ user: null, token: null })
+    set({ user: null, token: false })
   },
 }))
 

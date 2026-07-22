@@ -60,6 +60,7 @@ class Settings(BaseSettings):
     LLM_MESSAGE_TRUNCATION: int = 5000
 
     CHAT_TITLE_TRUNCATION: int = 60
+    CHAT_HISTORY_LIMIT: int = 30
 
     DB_HOST: str = "localhost"
     DB_PORT: int = 3306

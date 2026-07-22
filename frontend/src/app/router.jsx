@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { createBrowserRouter, Navigate, useParams, useNavigate, Outlet } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { setNavigate } from '../services/navigate'
@@ -7,15 +7,21 @@ import AuthLayout from '../layouts/AuthLayout'
 import ChatLayout from '../layouts/ChatLayout'
 import AdminLayout from '../layouts/AdminLayout'
 import AdminGuard from '../components/admin/AdminGuard'
-import Login from '../pages/Login'
-import Landing from '../pages/Landing'
-import Chat from '../pages/Chat'
-import History from '../pages/History'
-import PartnerPreferences from '../pages/PartnerPreferences'
-import AdminDashboard from '../pages/admin/Dashboard'
-import AdminUsers from '../pages/admin/Users'
-import AdminProfiles from '../pages/admin/Profiles'
-import AdminConversations from '../pages/admin/Conversations'
+import { useAuthStore } from './store'
+
+const Login = lazy(() => import('../pages/Login'))
+const Landing = lazy(() => import('../pages/Landing'))
+const Chat = lazy(() => import('../pages/Chat'))
+const History = lazy(() => import('../pages/History'))
+const PartnerPreferences = lazy(() => import('../pages/PartnerPreferences'))
+const AdminDashboard = lazy(() => import('../pages/admin/Dashboard'))
+const AdminUsers = lazy(() => import('../pages/admin/Users'))
+const AdminProfiles = lazy(() => import('../pages/admin/Profiles'))
+const AdminConversations = lazy(() => import('../pages/admin/Conversations'))
+
+function loadPage(element) {
+  return <Suspense fallback={<div className="min-h-[12rem] flex items-center justify-center text-surface-400">Loading…</div>}>{element}</Suspense>
+}
 
 
 function NavigateSetter() {
@@ -25,7 +31,7 @@ function NavigateSetter() {
 }
 
 function Guard({ children }) {
-  const token = localStorage.getItem('access_token')
+  const token = useAuthStore.getState().token
   if (!token) {
     return <Navigate to="/login" replace />
   }
@@ -44,7 +50,7 @@ export const router = createBrowserRouter([
     children: [
       {
         path: '/login',
-        element: <AuthLayout><Login /></AuthLayout>,
+        element: <AuthLayout>{loadPage(<Login />)}</AuthLayout>,
       },
       {
         path: '/register',
@@ -52,7 +58,7 @@ export const router = createBrowserRouter([
       },
       {
         path: '/',
-        element: <Landing />,
+        element: loadPage(<Landing />),
       },
       {
         path: '/chat',
@@ -71,20 +77,20 @@ export const router = createBrowserRouter([
         element: <Guard><ChatLayout /></Guard>,
         children: [
           { index: true, element: <Navigate to="/app/chat" replace /> },
-          { path: 'chat', element: <Chat /> },
-          { path: 'chat/:conversationId', element: <Chat /> },
-          { path: 'history', element: <History /> },
-          { path: 'partner-preferences', element: <PartnerPreferences /> },
+          { path: 'chat', element: loadPage(<Chat />) },
+          { path: 'chat/:conversationId', element: loadPage(<Chat />) },
+          { path: 'history', element: loadPage(<History />) },
+          { path: 'partner-preferences', element: loadPage(<PartnerPreferences />) },
         ],
       },
       {
         path: '/admin',
         element: <AdminGuard><AdminLayout /></AdminGuard>,
         children: [
-          { index: true, element: <AdminDashboard /> },
-          { path: 'users', element: <AdminUsers /> },
-          { path: 'profiles', element: <AdminProfiles /> },
-          { path: 'conversations', element: <AdminConversations /> },
+          { index: true, element: loadPage(<AdminDashboard />) },
+          { path: 'users', element: loadPage(<AdminUsers />) },
+          { path: 'profiles', element: loadPage(<AdminProfiles />) },
+          { path: 'conversations', element: loadPage(<AdminConversations />) },
         ],
       },
     ],

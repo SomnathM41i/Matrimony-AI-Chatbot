@@ -9,6 +9,9 @@ from app.ai.intent_llm import (
     is_response_transformation_request,
 )
 from app.services.chat_service import user_facing_error
+from app.ai.sql_generator import validate_select_sql
+from app.ai.llm_client import call_llm
+from app.services.db_query_service import DatabaseQueryError, _sync_safe_query
 
 
 class UserFacingErrorTests(unittest.TestCase):
@@ -33,6 +36,47 @@ class UserFacingErrorTests(unittest.TestCase):
     def test_unknown_error_does_not_leak_exception(self):
         response = user_facing_error(RuntimeError("secret provider detail"))
         self.assertNotIn("secret provider detail", response)
+
+    def test_database_failure_is_not_reported_as_no_results(self):
+        response = user_facing_error(DatabaseQueryError("internal database detail"))
+        self.assertIn("database", response.lower())
+        self.assertNotIn("internal database detail", response)
+
+
+class FailurePropagationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_llm_provider_error_is_raised_not_returned_as_content(self):
+        with patch(
+            "app.ai.llm_client.call_groq",
+            new=AsyncMock(side_effect=RuntimeError("private provider detail")),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "private provider detail"):
+                await call_llm("system", "hello")
+
+
+class DatabaseFailureTests(unittest.TestCase):
+    def test_query_failure_raises_distinct_error(self):
+        with patch(
+            "app.services.db_query_service._sync_get_connection",
+            side_effect=RuntimeError("connection refused"),
+        ):
+            with self.assertRaises(DatabaseQueryError):
+                _sync_safe_query("SELECT Name FROM register")
+
+
+class SqlPrivacyTests(unittest.TestCase):
+    def test_sensitive_column_alias_cannot_bypass_filter(self):
+        with self.assertRaisesRegex(ValueError, "Sensitive database columns"):
+            validate_select_sql(
+                "SELECT password AS Name FROM register LIMIT 1", {"register"}
+            )
+
+    def test_wildcard_profile_query_is_blocked(self):
+        with self.assertRaisesRegex(ValueError, "Wildcard column"):
+            validate_select_sql("SELECT * FROM register LIMIT 1", {"register"})
+
+    def test_count_star_remains_allowed(self):
+        sql = validate_select_sql("SELECT COUNT(*) AS total FROM register", {"register"})
+        self.assertIn("LIMIT", sql)
 
 
 class ResponseTransformationTests(unittest.TestCase):
