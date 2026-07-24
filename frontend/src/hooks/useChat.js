@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { sendMessage, getConversation } from '../services/chatService'
 import { useTokenStore, useAuthStore } from '../app/store'
+import { getApiErrorMessage } from '../utils/apiError'
 
 export function useChat(conversationId = null, onNewConversation) {
   const [messages, setMessages] = useState([])
@@ -74,10 +75,12 @@ export function useChat(conversationId = null, onNewConversation) {
         }
       }
       queryClient.invalidateQueries({ queryKey: ['conversations'] })
+      queryClient.invalidateQueries({ queryKey: ['commercial-me'] })
+      queryClient.invalidateQueries({ queryKey: ['commercial-usage'] })
     },
     onError: (error, variables) => {
       if (variables.convId !== activeConvId.current) return
-      const text = error?.response?.data?.detail || error?.message || 'Sorry, I encountered an error.'
+      const text = getApiErrorMessage(error)
       toast.error(text, { id: 'chat-error' })
       const errorMsg = {
         id: `err-${Date.now()}`,

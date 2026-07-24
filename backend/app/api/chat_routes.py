@@ -7,6 +7,7 @@ from app.services.chat_service import ChatService
 from app.models.user_model import User
 from app.main import limiter
 from app.core.logger import logger
+from app.services.commercial_service import CommercialLimitError
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
@@ -36,6 +37,15 @@ async def send_message(
             conversation_id=result["conversation_id"],
             message_id=result["message_id"],
             usage=UsageInfo(**result.get("usage", {})),
+            request_id=result.get("request_id"),
+            credits_charged=result.get("credits_charged", 0),
+            subscription=result.get("subscription"),
+        )
+    except CommercialLimitError as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=e.status_code,
+            detail={"code": e.code, "message": str(e)},
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))

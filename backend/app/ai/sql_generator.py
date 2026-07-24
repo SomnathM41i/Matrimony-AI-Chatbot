@@ -4,6 +4,7 @@ from app.config import settings
 from app.core.constants import SENSITIVE_FIELDS
 from app.core.prompts import SQL_GENERATION_SYSTEM_TEMPLATE, DB_SCHEMA_HINT
 from app.ai.llm_client import call_groq
+from app.ai.gateway import call_ai
 from app.core.logger import logger
 
 
@@ -88,19 +89,25 @@ def sanitize_rows(rows: list[dict]) -> list[dict]:
     return clean_rows
 
 
-async def generate_sql(message: str, allowed_tables: set, history: list[dict] | None = None) -> tuple[dict, dict]:
+async def generate_sql(message: str, allowed_tables: set, history: list[dict] | None = None, db=None) -> tuple[dict, dict, list[dict]]:
     sql_messages = [{"role": "system", "content": SQL_GENERATION_SYSTEM}]
     if history:
         sql_messages.extend(history)
     sql_messages.append({"role": "user", "content": message})
-    result = await call_groq(
-        messages=sql_messages,
-        temperature=settings.SQL_TEMPERATURE,
-        max_tokens=settings.SQL_MAX_TOKENS,
-    )
+    if db is not None:
+        result = await call_ai(
+            db, "sql_generation", messages=sql_messages,
+            temperature=settings.SQL_TEMPERATURE, max_tokens=settings.SQL_MAX_TOKENS,
+        )
+    else:
+        result = await call_groq(
+            messages=sql_messages,
+            temperature=settings.SQL_TEMPERATURE,
+            max_tokens=settings.SQL_MAX_TOKENS,
+        )
     try:
         parsed = json.loads(clean_llm_json(result["content"]))
     except Exception as e:
         logger.error(f"SQL JSON parse error: {e}; raw={result['content'][:500]}")
         raise ValueError("Could not convert request into a database query.")
-    return parsed, result.get("usage", {})
+    return parsed, result.get("usage", {}), result.get("events", [])

@@ -19,6 +19,9 @@ class ChatResponse(BaseModel):
     conversation_id: int
     message_id: int
     usage: UsageInfo = UsageInfo()
+    request_id: Optional[str] = None
+    credits_charged: int = 0
+    subscription: Optional[dict] = None
 
 
 class MessageResponse(BaseModel):

@@ -2,6 +2,7 @@ import re
 
 from app.config import settings
 from app.ai.llm_client import call_groq
+from app.ai.gateway import call_ai
 from app.ai.intent_detector import is_database_question
 from app.core.logger import logger
 from app.core.prompts import INTENT_SYSTEM_PROMPT
@@ -74,7 +75,12 @@ def is_contextual_database_follow_up(message: str, history: list[dict] | None) -
     )
 
 
-async def detect_intent_with_llm(message: str, history: list[dict] | None = None) -> bool:
+async def detect_intent_with_llm(
+    message: str,
+    history: list[dict] | None = None,
+    db=None,
+    include_result: bool = False,
+):
     if history and is_response_transformation_request(message):
         return False
 
@@ -83,17 +89,29 @@ async def detect_intent_with_llm(message: str, history: list[dict] | None = None
         if history:
             intent_messages.extend(history)
         intent_messages.append({"role": "user", "content": message[:settings.INTENT_MESSAGE_TRUNCATION]})
-        result = await call_groq(
-            messages=intent_messages,
-            model=settings.INTENT_MODEL,
-            temperature=settings.INTENT_TEMPERATURE,
-            max_tokens=settings.INTENT_MAX_TOKENS,
-        )
+        if db is not None:
+            result = await call_ai(
+                db,
+                "intent_detection",
+                messages=intent_messages,
+                temperature=settings.INTENT_TEMPERATURE,
+                max_tokens=settings.INTENT_MAX_TOKENS,
+            )
+        else:
+            result = await call_groq(
+                messages=intent_messages,
+                model=settings.INTENT_MODEL,
+                temperature=settings.INTENT_TEMPERATURE,
+                max_tokens=settings.INTENT_MAX_TOKENS,
+            )
         label = result.get("content", "").strip().lower()
-        return label == "database"
+        decision = label == "database"
+        return (decision, result) if include_result else decision
     except Exception as e:
         logger.warning(f"LLM intent detection failed, falling back to keywords: {e}")
-        return (
+        decision = (
             is_contextual_database_follow_up(message, history)
             or is_database_question(message)
         )
+        fallback = {"usage": {}, "events": []}
+        return (decision, fallback) if include_result else decision

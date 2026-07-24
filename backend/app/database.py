@@ -23,6 +23,8 @@ class Base(DeclarativeBase):
 
 
 async def create_tables():
+    # Import every model before create_all so newly added modules are registered.
+    import app.models  # noqa: F401
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
@@ -37,7 +39,21 @@ async def create_tables():
                     logger.info(f"Added {col[0]} column to users table")
                 except Exception:
                     pass
+            for col in [
+                ("prompt_tokens", "INTEGER", "0"),
+                ("completion_tokens", "INTEGER", "0"),
+                ("total_tokens", "INTEGER", "0"),
+            ]:
+                try:
+                    sync_conn.execute(text(f"ALTER TABLE chat_messages ADD COLUMN {col[0]} {col[1]} DEFAULT {col[2]}"))
+                    logger.info(f"Added {col[0]} column to chat_messages table")
+                except Exception:
+                    pass
         await conn.run_sync(_migrate)
+
+    from app.services.commercial_service import seed_commercial_defaults
+    async with AsyncSessionLocal() as session:
+        await seed_commercial_defaults(session)
 
     logger.info("Database tables created/verified")
 

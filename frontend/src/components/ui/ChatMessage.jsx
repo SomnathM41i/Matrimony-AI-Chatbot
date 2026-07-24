@@ -77,15 +77,18 @@ function splitContent(content) {
 
 export default function ChatMessage({ message, onRetry }) {
   const isUser = message.role === 'user'
-  const isError = message.isError || message.content.startsWith("Sorry, I couldn't process")
-    || message.content.startsWith('Sorry, the assistant is receiving')
-    || message.content.startsWith('Sorry, the request took too long')
-    || message.content.startsWith("Sorry, I couldn't understand")
+  const content = typeof message.content === 'string'
+    ? message.content
+    : message.content?.message || ''
+  const isError = message.isError || content.startsWith("Sorry, I couldn't process")
+    || content.startsWith('Sorry, the assistant is receiving')
+    || content.startsWith('Sorry, the request took too long')
+    || content.startsWith("Sorry, I couldn't understand")
 
   const parts = useMemo(() => {
     if (isUser) return null
-    return splitContent(message.content)
-  }, [message.content, isUser])
+    return splitContent(content)
+  }, [content, isUser])
 
   const hasCards = useMemo(() => parts?.some(p => p.type === 'card'), [parts])
 
@@ -115,7 +118,7 @@ export default function ChatMessage({ message, onRetry }) {
       >
         {!hasCards ? (
           <>
-            <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
+            <p className="text-sm leading-relaxed whitespace-pre-wrap">{content}</p>
             {isError && onRetry && (
               <button onClick={onRetry} className="mt-2 text-xs text-primary-400 hover:text-primary-300 underline">
                 Retry

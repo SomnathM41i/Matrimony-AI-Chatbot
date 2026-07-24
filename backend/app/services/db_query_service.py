@@ -119,10 +119,12 @@ def accumulate_usage(*usages):
     return total
 
 
-async def answer_database_question(message: str, history: list[dict] | None = None) -> dict:
-    sql_plan, sql_usage = await generate_sql(message, settings.allowed_tables_set, history=history)
+async def answer_database_question(message: str, history: list[dict] | None = None, db=None) -> dict:
+    sql_plan, sql_usage, sql_events = await generate_sql(
+        message, settings.allowed_tables_set, history=history, db=db
+    )
     if not sql_plan.get("needs_database", True):
-        return {"content": sql_plan.get("answer_without_database", ""), "usage": sql_usage}
+        return {"content": sql_plan.get("answer_without_database", ""), "usage": sql_usage, "events": sql_events}
     sql_result = await execute_llm_sql(sql_plan.get("sql", ""))
     profile_rows = [
         {"MatriID": row.get("MatriID"), "Name": row.get("Name")}
@@ -140,10 +142,12 @@ async def answer_database_question(message: str, history: list[dict] | None = No
             message,
             "No matching results were found. Suggest trying a different city, caste, or age range.",
             history=history,
+            db=db,
         )
         return {
             "content": notice["content"],
             "usage": accumulate_usage(sql_usage, notice.get("usage", {})),
+            "events": sql_events + notice.get("events", []),
             "metadata": metadata,
         }
 
@@ -153,16 +157,18 @@ async def answer_database_question(message: str, history: list[dict] | None = No
             message,
             f"The search found {sql_result['row_count']} results, too many to show at once. Ask the user to add more specific criteria.",
             history=history,
+            db=db,
         )
         return {
             "content": notice["content"],
             "usage": accumulate_usage(sql_usage, notice.get("usage", {})),
+            "events": sql_events + notice.get("events", []),
             "metadata": metadata,
         }
 
     from app.services.llm_service import format_db_result
     try:
-        formatted = await format_db_result(message, sql_result, history=history)
+        formatted = await format_db_result(message, sql_result, history=history, db=db)
     except GroqPayloadTooLargeError:
         return {
             "content": (
@@ -170,10 +176,12 @@ async def answer_database_question(message: str, history: list[dict] | None = No
                 "Please narrow your search by adding more specific criteria."
             ),
             "usage": sql_usage,
+            "events": sql_events,
         }
     return {
         "content": formatted["content"],
         "usage": accumulate_usage(sql_usage, formatted.get("usage", {})),
+        "events": sql_events + formatted.get("events", []),
         "metadata": metadata,
     }
 

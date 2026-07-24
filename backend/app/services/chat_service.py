@@ -9,6 +9,13 @@ from app.core.logger import logger
 from datetime import datetime, timezone
 import httpx
 import json
+import uuid
+from app.services.commercial_service import (
+    finalize_usage,
+    record_usage_events,
+    reserve_usage,
+    subscription_dict,
+)
 
 def user_facing_error(error: Exception) -> str:
     """Map internal/provider failures to safe, actionable chat messages."""
@@ -72,6 +79,7 @@ class ChatService:
     async def process_message(
         self, user_id: int, message: str, conversation_id: int | None = None
     ) -> dict:
+        request_id = uuid.uuid4().hex
         if conversation_id:
             conv = await self.conv_repo.get_by_id(conversation_id)
             if not conv or conv.user_id != user_id:
@@ -80,6 +88,10 @@ class ChatService:
             n = settings.CHAT_TITLE_TRUNCATION
             title = message[:n] + ("..." if len(message) > n else "")
             conv = await self.conv_repo.create(user_id=user_id, title=title)
+
+        reservation, subscription = await reserve_usage(self.db, user_id, request_id)
+        # Persist the reservation before the external call so concurrent requests see it.
+        await self.db.commit()
 
         history = await self._load_history(conv.id)
 
@@ -91,14 +103,26 @@ class ChatService:
         )
 
         usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        events = []
+        request_type = "normal"
+        credits_charged = 0
         response_metadata = None
         try:
-            if await detect_intent_with_llm(message, history=history):
-                result = await answer_database_question(message, history=history)
+            is_database, intent_result = await detect_intent_with_llm(
+                message, history=history, db=self.db, include_result=True
+            )
+            events.extend(intent_result.get("events", []))
+            intent_usage = intent_result.get("usage", {})
+            for key in usage:
+                usage[key] += intent_usage.get(key, 0) or 0
+            if is_database:
+                request_type = "database"
+                result = await answer_database_question(message, history=history, db=self.db)
             else:
-                result = await get_general_response(message, history=history)
+                result = await get_general_response(message, history=history, db=self.db)
             reply_text = result["content"]
             response_metadata = result.get("metadata")
+            events.extend(result.get("events", []))
             if result.get("usage"):
                 u = result["usage"]
                 usage = {
@@ -106,9 +130,21 @@ class ChatService:
                     "completion_tokens": usage["completion_tokens"] + (u.get("completion_tokens", 0) or 0),
                     "total_tokens": usage["total_tokens"] + (u.get("total_tokens", 0) or 0),
                 }
+            credits_charged = await finalize_usage(self.db, request_id, request_type, True)
         except Exception as e:
             logger.exception("Chat processing error")
             reply_text = user_facing_error(e)
+            await finalize_usage(self.db, request_id, request_type, False)
+
+        await record_usage_events(
+            self.db,
+            request_id=request_id,
+            user_id=user_id,
+            subscription_id=subscription.id,
+            conversation_id=conv.id,
+            request_type=request_type,
+            events=events,
+        )
 
         assistant_msg = await self.msg_repo.create(
             conversation_id=conv.id,
@@ -128,6 +164,9 @@ class ChatService:
             "conversation_id": conv.id,
             "message_id": assistant_msg.id,
             "usage": usage,
+            "request_id": request_id,
+            "credits_charged": credits_charged,
+            "subscription": subscription_dict(subscription),
         }
 
     async def get_conversation(self, user_id: int, conversation_id: int) -> dict:

@@ -3,7 +3,7 @@ import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard, Users, UserRound, MessageSquare, HeartPulse,
-  ChevronLeft, Menu, X, LogOut, ArrowLeftFromLine,
+  ChevronLeft, Menu, X, LogOut, ArrowLeftFromLine, Settings2,
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { useAuthStore } from '../app/store'
@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { path: '/admin/users', label: 'App Users', icon: Users },
   { path: '/admin/profiles', label: 'Profiles', icon: UserRound },
   { path: '/admin/conversations', label: 'Chat Monitoring', icon: MessageSquare },
+  { path: '/admin/commercial-ai', label: 'Commerce & AI', icon: Settings2 },
 ]
 
 export default function AdminLayout() {

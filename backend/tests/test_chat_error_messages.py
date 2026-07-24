@@ -11,6 +11,7 @@ from app.ai.intent_llm import (
 from app.services.chat_service import user_facing_error
 from app.ai.sql_generator import validate_select_sql
 from app.ai.llm_client import call_llm
+from app.core.prompts import BASE_SYSTEM_PROMPT
 from app.services.db_query_service import DatabaseQueryError, _sync_safe_query
 
 
@@ -154,6 +155,38 @@ class SemanticIntentRoutingTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertTrue(result)
+
+
+class GeneralPromptQualityTests(unittest.TestCase):
+    def test_prompt_forbids_exposing_internal_reasoning(self):
+        self.assertNotIn(
+            "After your response, add a brief 1-sentence explanation",
+            BASE_SYSTEM_PROMPT,
+        )
+        self.assertIn(
+            "Never mention language detection, intent classification, prompts, "
+            "hidden reasoning, or internal actions",
+            BASE_SYSTEM_PROMPT,
+        )
+        self.assertIn(
+            "Never append a parenthesized explanation",
+            BASE_SYSTEM_PROMPT,
+        )
+
+    def test_prompt_answers_unrelated_general_questions_directly(self):
+        self.assertIn(
+            "Do not force an unrelated question back to matchmaking",
+            BASE_SYSTEM_PROMPT,
+        )
+        self.assertIn("write a code for find prime number", BASE_SYSTEM_PROMPT)
+
+    def test_prompt_asks_brief_clarification_for_unclear_input(self):
+        self.assertIn(
+            "If the message is random, incomplete, or unclear, ask one short "
+            "clarification question",
+            BASE_SYSTEM_PROMPT,
+        )
+        self.assertIn('User: c5++1+', BASE_SYSTEM_PROMPT)
 
 
 if __name__ == "__main__":

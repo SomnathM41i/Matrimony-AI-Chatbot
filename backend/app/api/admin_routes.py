@@ -293,14 +293,27 @@ async def get_conversation_detail(
 # ─── System Health ──────────────────────────────────────────
 
 @router.get("/health")
-async def admin_health(admin: User = Depends(require_admin)):
+async def admin_health(
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
     mysql_ok = await check_db_connection()
     import app.config as app_config
     import app.ai.llm_client as llm_client
     groq_configured = bool(app_config.settings.GROQ_API_KEY)
+    from app.models.commercial_model import AIProvider
+    providers = (await db.execute(select(AIProvider).order_by(AIProvider.id))).scalars().all()
 
     return {
         "mysql": "connected" if mysql_ok else "unreachable",
         "groq_api": "configured" if groq_configured else "not configured",
+        "ai_providers": [
+            {
+                "code": provider.code,
+                "enabled": provider.enabled,
+                "secret_reference": provider.api_key_env or None,
+            }
+            for provider in providers
+        ],
         "app_env": app_config.settings.APP_ENV,
     }

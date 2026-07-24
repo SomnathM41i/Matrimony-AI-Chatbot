@@ -2,12 +2,14 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  MessageSquare, History, Plus, LogOut, Trash2, Menu, X, Database, Wifi, WifiOff, Brain, Shield,
+  MessageSquare, History, Plus, LogOut, Trash2, Menu, X, Database, Wifi, WifiOff, Brain, Shield, Crown,
 } from 'lucide-react'
 import { useHistory } from '../../hooks/useHistory'
 import { useAuth } from '../../hooks/useAuth'
 import { truncate, formatDate } from '../../utils/formatter'
 import { useDatabaseStatus } from '../../hooks/useDatabaseStatus'
+import { useQuery } from '@tanstack/react-query'
+import { getSubscription } from '../../services/commercialService'
 
 export default function Sidebar() {
   const [open, setOpen] = useState(false)
@@ -16,6 +18,7 @@ export default function Sidebar() {
   const { conversations, deleteConversation } = useHistory()
   const { user, logout } = useAuth()
   const { dbConnected, loading } = useDatabaseStatus()
+  const { data: subscription } = useQuery({ queryKey: ['commercial-me'], queryFn: getSubscription, retry: false })
 
   const currentConvId = location.pathname.match(/\/app\/chat\/([^/]+)/)?.[1]
 
@@ -58,6 +61,17 @@ export default function Sidebar() {
         >
           <MessageSquare className="w-4 h-4" />
           Chat
+        </button>
+        <button
+          onClick={() => { navigate('/app/plans'); setOpen(false) }}
+          className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
+            location.pathname === '/app/plans'
+              ? 'bg-primary-600/20 text-primary-300'
+              : 'text-surface-400 hover:text-surface-200 hover:bg-surface-800'
+          }`}
+        >
+          <Crown className="w-4 h-4" />
+          Plans
         </button>
         <button
           onClick={() => { navigate('/app/history'); setOpen(false) }}
@@ -117,6 +131,13 @@ export default function Sidebar() {
       </div>
 
       <div className="px-4 py-2 border-t border-surface-800 space-y-1.5">
+        {subscription && (
+          <div className="flex items-center gap-2">
+            <Crown className="w-3.5 h-3.5 text-amber-400" />
+            <span className="text-xs text-surface-500">{subscription.plan_name}</span>
+            <span className="ml-auto text-xs text-amber-300">{subscription.credits_remaining} credits</span>
+          </div>
+        )}
         <div className="flex items-center gap-2">
           <Database className="w-3.5 h-3.5 text-surface-500" />
           <span className="text-xs text-surface-500">MySQL</span>
