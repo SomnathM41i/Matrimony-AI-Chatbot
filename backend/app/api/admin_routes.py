@@ -68,7 +68,7 @@ async def list_users(
                 "role": u.role,
                 "is_active": u.is_active,
                 "is_verified": u.is_verified,
-                "is_online": bool(u.last_activity and (datetime.now(timezone.utc) - u.last_activity) < timedelta(minutes=5)),
+                "is_online": bool(u.last_activity and (datetime.now(timezone.utc).replace(tzinfo=None) - u.last_activity) < timedelta(minutes=5)),
                 "conversation_count": 0,
                 "last_login": u.last_login.isoformat() if u.last_login else None,
                 "created_at": u.created_at.isoformat() if u.created_at else None,
