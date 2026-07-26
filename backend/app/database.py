@@ -31,6 +31,7 @@ async def create_tables():
     async with engine.begin() as conn:
         def _migrate(sync_conn):
             for col in [
+                ("last_activity", "DATETIME", "NULL"),
                 ("role", "VARCHAR(32)", "'user'"),
                 ("token_version", "INTEGER", "0"),
             ]:

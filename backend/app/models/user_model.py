@@ -18,6 +18,7 @@ class User(Base):
     token_version = Column(Integer, default=0)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     last_login = Column(DateTime, nullable=True)
+    last_activity = Column(DateTime, nullable=True)
 
     conversations = relationship("Conversation", back_populates="user", cascade="all, delete-orphan")
     messages = relationship("ChatMessage", back_populates="user", cascade="all, delete-orphan")

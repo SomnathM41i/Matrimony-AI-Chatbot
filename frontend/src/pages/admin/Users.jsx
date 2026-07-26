@@ -119,6 +119,18 @@ export default function AdminUsers() {
 
   const columns = [
     { key: 'id', label: 'ID' },
+    {
+      key: 'is_online',
+      label: 'Online',
+      render: (val) => (
+        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${
+          val ? 'bg-green-500/20 text-green-300' : 'bg-surface-700 text-surface-500'
+        }`}>
+          <span className={`w-2 h-2 rounded-full ${val ? 'bg-green-400 shadow-sm shadow-green-400/50' : 'bg-surface-500'}`} />
+          {val ? 'Online' : 'Offline'}
+        </span>
+      ),
+    },
     { key: 'name', label: 'Name' },
     { key: 'email', label: 'Email' },
     {

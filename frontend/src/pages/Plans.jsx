@@ -3,10 +3,6 @@ import { Check, Crown, Sparkles } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { createPlanOrder, getPlans, getSubscription } from '../services/commercialService'
 
-const money = (paise) => new Intl.NumberFormat('en-IN', {
-  style: 'currency', currency: 'INR', maximumFractionDigits: 0,
-}).format((paise || 0) / 100)
-
 export default function Plans() {
   const queryClient = useQueryClient()
   const { data: plans = [], isLoading } = useQuery({ queryKey: ['commercial-plans'], queryFn: getPlans })
@@ -53,8 +49,8 @@ export default function Plans() {
                   {plan.code === 'SILVER' ? <Crown className="w-5 h-5 text-amber-400" /> : <Sparkles className="w-5 h-5 text-primary-400" />}
                 </div>
                 <h2 className="text-xl font-semibold text-surface-100">{plan.name}</h2>
-                <p className="text-3xl font-bold text-white mt-3">{money(plan.price_paise)}</p>
-                <p className="text-xs text-surface-500">for {plan.duration_days} days</p>
+                <p className="text-3xl font-bold text-white mt-3">***</p>
+                <p className="text-xs text-surface-500">{plan.duration_days} days</p>
                 <div className="space-y-2 mt-5 text-sm text-surface-300">
                   <p className="flex gap-2"><Check className="w-4 h-4 text-green-400" /> {plan.ai_credits.toLocaleString()} AI credits</p>
                   <p className="flex gap-2"><Check className="w-4 h-4 text-green-400" /> {plan.daily_message_limit} messages/day</p>
