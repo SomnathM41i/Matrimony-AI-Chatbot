@@ -6,6 +6,8 @@ from app.dependencies import get_db, require_admin
 from app.models.user_model import User
 from app.models.conversation_model import Conversation
 from app.models.chat_model import ChatMessage
+from app.models.commercial_model import Subscription
+from app.services.commercial_service import subscription_dict
 from app.services.db_query_service import safe_query, check_db_connection, get_database_stats
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -41,6 +43,21 @@ async def list_users(
     total = (await db.execute(count_query)).scalar() or 0
     users = (await db.execute(query.offset(offset).limit(per_page))).scalars().all()
 
+    user_ids = [u.id for u in users]
+    subs = {}
+    if user_ids:
+        rows = (
+            await db.execute(
+                select(Subscription).where(
+                    Subscription.user_id.in_(user_ids),
+                    Subscription.status == "active",
+                )
+            )
+        ).scalars().all()
+        for s in rows:
+            if s.user_id not in subs:
+                subs[s.user_id] = subscription_dict(s)
+
     return {
         "items": [
             {
@@ -53,6 +70,7 @@ async def list_users(
                 "conversation_count": 0,
                 "last_login": u.last_login.isoformat() if u.last_login else None,
                 "created_at": u.created_at.isoformat() if u.created_at else None,
+                "subscription": subs.get(u.id),
             }
             for u in users
         ],
