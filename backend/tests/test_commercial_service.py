@@ -141,7 +141,7 @@ class CommercialChatIntegrationTests(unittest.IsolatedAsyncioTestCase):
                 "app.services.chat_service.get_general_response",
                 new=AsyncMock(return_value=hybrid_result),
             ):
-                result = await ChatService(db).process_message(user.id, "Hi")
+                result = await ChatService(db).process_message(user.id, "How are you?")
             await db.commit()
             await db.refresh(subscription)
             events = (await db.execute(select(AIUsageEvent))).scalars().all()

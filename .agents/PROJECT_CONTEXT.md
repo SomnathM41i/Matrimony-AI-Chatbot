@@ -41,7 +41,7 @@
 
 ## Existing Conventions and Important Files
 
-### New Hybrid RAG Module (2026-07-26)
+### Hybrid RAG Module (2026-07-26)
 
 - `backend/app/services/extraction_service.py` — Structured extraction: LLM outputs only JSON filters, never SQL.
 - `backend/app/services/query_builder.py` — Python query builder: builds parameterized SQL from structured filters.
@@ -50,26 +50,27 @@
 - `backend/app/services/indexing_service.py` — Automatic profile re-indexing on schema change.
 - `backend/app/services/schema_discovery.py` — Auto-discovers tables, columns, distinct values from MySQL.
 - `backend/app/services/example_generator.py` — Generates multilingual example queries from real data.
-- `backend/app/core/prompts.py` — Added: `STRUCTURED_EXTRACTION_PROMPT`, `GROUNDED_GENERATION_PROMPT`.
-  - Fixed: `BASE_SYSTEM_PROMPT` — removed contradictory "never refuse" directive.
-  - Fixed: `FORMAT_SYSTEM_PROMPT` — changed example names to obviously fake placeholders.
+- `backend/app/core/prompts.py` — Contains all system prompts: `BASE_SYSTEM_PROMPT`, `FORMAT_SYSTEM_PROMPT`, `INTENT_SYSTEM_PROMPT`, `SQL_GENERATION_SYSTEM_TEMPLATE`, `DB_SCHEMA_HINT`, `STRUCTURED_EXTRACTION_PROMPT`.
 - `backend/app/config.py` — Added: `CHAT_ENGINE` (legacy|hybrid_rag), embedding model config, Qdrant URL.
+- `backend/app/services/db_query_service.py` — Added anti-hallucination pre-formatting guard blocks LLM formatting for unavailable personal attributes (favorite food, appetite, etc.).
+- `backend/app/services/chat_service.py` — Added greeting shortcut (handles hello/hi/namaste without LLM call).
 
-### Legacy Modules (to be removed after validation)
+### Current Module Layout
 
-- `backend/app/ai/intent_llm.py` — Intent classification (replaced by structured extraction).
-- `backend/app/ai/intent_detector.py` — Keyword fallback (replaced by safety gate).
-- `backend/app/ai/sql_generator.py` — LLM SQL generation (replaced by query builder). `validate_select_sql` kept for safety.
-- Settings: `backend/app/config.py`.
-- App startup and routers: `backend/app/main.py`.
-- Local DB setup: `backend/app/database.py`.
-- Authentication: `backend/app/api/auth_routes.py`, `backend/app/core/auth.py`.
-- Chat route/service: `backend/app/api/chat_routes.py`, `backend/app/services/chat_service.py`.
-- Current AI HTTP client: `backend/app/ai/llm_client.py`.
-- AI tasks (legacy): `backend/app/ai/intent_llm.py`, `backend/app/ai/sql_generator.py`, `backend/app/services/llm_service.py`.
-- MySQL execution: `backend/app/services/db_query_service.py`.
-- Frontend router: `frontend/src/app/router.jsx`.
-- Admin pages: `frontend/src/pages/admin/`.
+| Layer | Key Files |
+|---|---|
+| AI/LLM | `backend/app/ai/gateway.py`, `backend/app/ai/llm_client.py` |
+| Extraction | `backend/app/services/extraction_service.py` |
+| Query Building | `backend/app/services/query_builder.py` |
+| DB Query | `backend/app/services/db_query_service.py` |
+| LLM Formatting | `backend/app/services/llm_service.py` |
+| Chat | `backend/app/services/chat_service.py` |
+| Embedding | `backend/app/services/embedding_service.py` |
+| Vector Search | `backend/app/services/vector_service.py` |
+| Indexing | `backend/app/services/indexing_service.py` |
+| Schema Discovery | `backend/app/services/schema_discovery.py` |
+| Example Gen | `backend/app/services/example_generator.py` |
+| Prompts | `backend/app/core/prompts.py` |
 
 ## Session Variables
 
@@ -99,6 +100,11 @@
 
 - Existing authenticated chatbot, history, MySQL query assistant, Groq integration, token fields, and admin monitoring were present before `.agents` documentation was initialized.
 - On 2026-07-23 the commercial AI module was added: versioned plans, subscriptions, atomic credit reservations, daily limits, normalized per-call usage/cost events, dynamic AI providers/models/task routing/fallbacks, manual payment orders, provider-neutral payment contract, customer plans UI, and the Commerce & AI admin console.
+- On 2026-07-26 Hybrid RAG pipeline implemented: structured extraction + Python query builder + Qdrant vector search fallback.
+- On 2026-07-27 anti-hallucination hardening: pre-formatting guard for unavailable personal attributes, strengthened FORMAT_SYSTEM_PROMPT and BASE_SYSTEM_PROMPT.
+- On 2026-07-27 timeout fixes: frontend API timeout increased 30s→120s, greeting shortcut added.
+- On 2026-07-27 legacy modules removed: `intent_llm.py`, `intent_detector.py`, `sql_generator.py` deleted.
+- All project caches cleaned: `__pycache__`, `.pytest_cache`, `frontend/dist`, `node_modules/.vite` removed.
 - Application startup now seeds Groq provider/models, five task routes, the Free/Basic/Silver catalogue, and a manual verification gateway only when those records do not already exist.
 - Current paid checkout state is manual administrator verification; no external gateway adapter is installed.
 

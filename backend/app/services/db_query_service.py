@@ -77,6 +77,44 @@ def sanitize_rows(rows: list[dict]) -> list[dict]:
     return clean_rows
 
 
+_UNKNOWN_PERSONAL_ATTRIBUTES = [
+    "favorite food", "favourite food", "favorite dish", "favourite dish",
+    "biryani", "pizza", "cuisine", "curry",
+    "appetite", "how much does she eat", "how much does he eat",
+    "how much can she eat", "how much can he eat", "how much she eat",
+    "how much he eat", "eating habit", "cooking habit",
+    "daily routine", "wake up", "sleeping",
+    "prefer curd", "prefer yogurt", "prefer biryani",
+    "favourite biryani", "favorite biryani",
+    "what does she like to eat", "what does he like to eat",
+    "what food does she like", "what food does he like",
+    "kay khate", "kay khato", "aavadta", "आवडता",
+    "जेवण", "खाणे", "खाते",
+]
+
+_KNOWN_PERSONAL_COLUMNS = {
+    "diet", "smoke", "drink", "hobbies", "interests", "aboutmyself",
+    "education", "educationdetails", "occupation", "employedin", "annualincome",
+    "height", "weight", "bloodgroup", "bodytype", "complexion",
+    "familyvalues", "familytype", "familystatus",
+    "fathername", "mothersname", "fathersoccupation", "mothersoccupation",
+    "noofbrothers", "noofsisters",
+    "star", "moonsign", "manglik", "gothram", "language",
+    "religion", "caste", "subcaste",
+    "city", "dist", "state", "country", "residencystatus",
+    "matriid", "name", "age", "gender", "maritalstatus",
+    "mobile", "photo1", "partner_expectations",
+}
+
+
+def _message_asks_about_unavailable_attribute(message: str) -> bool:
+    msg = message.lower().strip()
+    for phrase in _UNKNOWN_PERSONAL_ATTRIBUTES:
+        if phrase in msg:
+            return True
+    return False
+
+
 class DatabaseQueryError(RuntimeError):
     """Raised when the matrimony database cannot execute a query."""
 
@@ -369,6 +407,19 @@ async def _handle_profile_detail(
 
     for row in sql_result["rows"]:
         _add_photo_url(row)
+
+    if _message_asks_about_unavailable_attribute(message):
+        msg = await _format_notice_safe(
+            message,
+            "This information is not available in the database.",
+            history, db,
+            "This information is not available in the database.",
+        )
+        return {
+            "content": msg,
+            "is_profile_search": True, "usage": {}, "events": [],
+            "metadata": {"selected_profile": selected_profile, "accumulated_filters": {}},
+        }
 
     try:
         formatted = await format_db_result(message, sql_result, history=history, db=db)

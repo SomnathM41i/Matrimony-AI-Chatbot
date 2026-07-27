@@ -69,6 +69,28 @@ def _is_profile_query(message: str, history: list[dict] | None = None) -> bool:
     return has_profile_words or has_community_words or has_search_verb
 
 
+GREETING_RESPONSES: dict[str, str] = {
+    "hi": "Hi! Welcome to myvivahai. How can I help you today?",
+    "hello": "Hello! Welcome to myvivahai. How can I help you today?",
+    "hey": "Hey there! Welcome to myvivahai. How can I help you today?",
+    "नमस्कार": "नमस्कार! myvivahai मध्ये आपले स्वागत आहे. मी तुम्हाला कशी मदत करू?",
+    "नमस्ते": "नमस्ते! myvivahai में आपका स्वागत है. मैं आपकी कैसे मदद कर सकता हूँ?",
+    "हॅलो": "हॅलो! myvivahai मध्ये आपले स्वागत आहे. मी तुम्हाला कशी मदत करू?",
+    "namaste": "Namaste! Welcome to myvivahai. How can I help you today?",
+    "good morning": "Good morning! Welcome to myvivahai. How can I help you today?",
+    "good afternoon": "Good afternoon! Welcome to myvivahai. How can I help you today?",
+    "good evening": "Good evening! Welcome to myvivahai. How can I help you today?",
+}
+
+
+def _is_greeting_only(message: str) -> str | None:
+    msg = message.lower().strip().rstrip(".!?,")
+    for greeting, response in GREETING_RESPONSES.items():
+        if msg == greeting:
+            return response
+    return None
+
+
 class ChatService:
     def __init__(self, db: AsyncSession):
         self.db = db
@@ -111,6 +133,30 @@ class ChatService:
     async def process_message(
         self, user_id: int, message: str, conversation_id: int | None = None
     ) -> dict:
+        greeting_reply = _is_greeting_only(message)
+        if greeting_reply and not conversation_id:
+            n = settings.CHAT_TITLE_TRUNCATION
+            title = message[:n] + ("..." if len(message) > n else "")
+            conv = await self.conv_repo.create(user_id=user_id, title=title)
+            _ = await self.msg_repo.create(
+                conversation_id=conv.id, user_id=user_id,
+                role="user", content=message,
+            )
+            assistant_msg = await self.msg_repo.create(
+                conversation_id=conv.id, user_id=user_id,
+                role="assistant", content=greeting_reply,
+            )
+            await self.conv_repo.update(conv, updated_at=datetime.now(timezone.utc))
+            return {
+                "reply": greeting_reply,
+                "conversation_id": conv.id,
+                "message_id": assistant_msg.id,
+                "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+                "request_id": "",
+                "credits_charged": 0,
+                "subscription": None,
+            }
+
         request_id = uuid.uuid4().hex
         if conversation_id:
             conv = await self.conv_repo.get_by_id(conversation_id)

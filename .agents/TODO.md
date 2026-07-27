@@ -31,15 +31,30 @@
 - [x] Conversation memory: filter accumulation + detail context across turns
 - [x] profile_detail intent for family/education/horoscope/income etc.
 - [x] Multilingual responses for all error/notice messages via format_db_notice()
-- [ ] Remove legacy modules (intent_llm.py, intent_detector.py, sql_generator.py)
-      — Wait until hybrid_rag validated in production for 1+ week
+- [x] Remove legacy modules (intent_llm.py, intent_detector.py, sql_generator.py) — already deleted
+
+## Anti-Hallucination Hardening (2026-07-27)
+- [x] Add pre-formatting guard in db_query_service.py — blocks LLM formatting for questions about unavailable personal attributes (favorite food, appetite, etc.)
+- [x] Strengthen FORMAT_SYSTEM_PROMPT — strict anti-hallucination rules with explicit examples of forbidden fabrications
+- [x] Strengthen BASE_SYSTEM_PROMPT — added "not available in the database" instruction
+
+## Timeout Fixes (2026-07-27)
+- [x] Increase frontend API timeout from 30s to 120s (apiClient.js)
+- [x] Add greeting shortcut in chat_service.py — handles "hello"/"hi"/"namaste" etc. without calling any LLM
+
+## Code Cleanup
+- [x] Remove stale myvivahai.md session log from project root
+- [x] Remove all __pycache__ directories from app code
+- [x] Remove .pytest_cache, frontend/dist, frontend/node_modules/.vite
 
 ## Testing
-- [ ] Unit tests for extraction_service.py (High priority)
-- [ ] Unit tests for query_builder.py (High priority)
-- [ ] Unit tests for embedding_service.py (Medium)
-- [ ] Integration tests for vector_service.py (Medium)
-- [ ] End-to-end tests for hybrid RAG pipeline (High)
+- [x] Unit tests for extraction_service.py
+- [x] Unit tests for query_builder.py
+- [x] Unit tests for embedding_service.py
+- [x] Integration tests for vector_service.py
+- [x] End-to-end tests for hybrid RAG pipeline
+- [ ] Add unit tests for anti-hallucination guard (_message_asks_about_unavailable_attribute)
+- [ ] Add unit tests for greeting shortcut (_is_greeting_only)
 
 ## Deployment
 - [ ] Run `reindex_profiles.py` one-time to load 5105 profiles into Qdrant (~11 min)
@@ -48,7 +63,7 @@
 - [ ] Install and verify live payment-gateway adapter (blocked — needs business choice)
 
 ## Verification
-- [x] 29/29 backend tests passing
+- [x] 134/134 backend tests passing
 - [ ] Test end-to-end: "96 kuli maratha kolhapur engineer mulgi" → MySQL results
 - [ ] Test end-to-end: "modern but traditional girl" → Qdrant vector fallback
 - [ ] Test: "mala pune til mulgi dakhav" → Marathi profiles

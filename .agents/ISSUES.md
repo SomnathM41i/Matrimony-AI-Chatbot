@@ -42,21 +42,21 @@
 - Severity: Medium before deployment, not a code-completion blocker.
 - Status: Open deployment task. Unit/integration tests validate normalized cost and complete chat accounting with mocked AI results; admins can run live model and route tests after secrets are installed.
 
-## LLM hallucinates fake matrimonial profiles
+## LLM hallucinates fake matrimonial profiles (RESOLVED)
 
 - Root cause (primary): `BASE_SYSTEM_PROMPT` lines 19-22 contain contradictory directives — "NEVER say you don't have access to member information" conflicts with "NEVER invent profile details." When intent misclassification routes a profile query to the general response path, the model can neither refuse nor answer truthfully, so it fabricates profiles.
 - Root cause (secondary): Intent classifier uses llama-3.1-8b with only 10 max tokens, which frequently misclassifies Marathi/mixed-language queries about subcastes like "96 Kuli Maratha" as "general" instead of "database."
 - Root cause (tertiary): `FORMAT_SYSTEM_PROMPT` example names ("Sneha Patil", "Priya Sharma") leak into LLM output as fabricated profile data.
-- Affected files: `backend/app/core/prompts.py` (BASE_SYSTEM_PROMPT lines 19-22, FORMAT_SYSTEM_PROMPT lines 72-73), `backend/app/ai/intent_llm.py` (small model, 10 tokens), `backend/app/services/chat_service.py` (no safety gate in general path).
-- Severity: Critical — users receive fake personal data (names, ages, photos) for non-existent members.
-- Status: Phase 1 fix in progress (prompt fix + safety gate). Full solution via Hybrid RAG pipeline (Phases 2-5).
-- Resolution plan:
-  - Phase 1: Fix `BASE_SYSTEM_PROMPT` contradictions. Add safety gate in general path. Change example names in `FORMAT_SYSTEM_PROMPT`.
-  - Phase 2: Replace intent detection with structured extraction (LLM outputs JSON filters only, never SQL).
-  - Phase 3: Python query builder (parameterized SQL, no LLM SQL generation).
-  - Phase 4: Hybrid MySQL + Qdrant semantic search fallback.
-  - Phase 5: Conversation memory for multi-turn refinement.
-  - Feature flag `CHAT_ENGINE` allows gradual migration and rollback.
+- Root cause (quaternary): Even when data was retrieved from DB, the LLM formatting layer would fabricate personal details (favorite food, appetite, eating habits) that don't exist in any database column.
+- Affected files: `backend/app/core/prompts.py`, `backend/app/services/db_query_service.py`, `backend/app/services/chat_service.py`
+- Severity: Critical — users received fake personal data (names, ages, photos, food preferences) for real members.
+- Status: RESOLVED 2026-07-27. Multiple defense layers implemented:
+  1. Hybrid RAG pipeline (Phases 2-5): Structured extraction + Python query builder replaces intent→SQL generation. LLM never generates SQL or free-text answers.
+  2. Safety gate in `chat_service.py`: Profile-keyword queries in general path return "No matching profiles found" without calling LLM.
+  3. Pre-formatting guard in `_handle_profile_detail()`: Detects questions about unavailable personal attributes (favorite food, appetite, eating habits) and returns "not available" without calling LLM.
+  4. `FORMAT_SYSTEM_PROMPT` hardened with explicit list of forbidden fabrications and "MOST IMPORTANT rule" emphasis.
+  5. `BASE_SYSTEM_PROMPT` strengthened with anti-hallucination instructions.
+  6. Legacy modules (`intent_llm.py`, `intent_detector.py`, `sql_generator.py`) deleted.
 
 ## Python 3.14 compatibility for ML dependencies
 
