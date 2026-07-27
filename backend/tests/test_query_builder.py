@@ -19,7 +19,7 @@ class BuildProfileQueryTests(unittest.TestCase):
 
     def test_gender_filter_adds_condition(self):
         sql, params = build_profile_query({"gender": "Female"})
-        self.assertIn("LOWER(Gender) = LOWER(?)", sql)
+        self.assertIn("LOWER(Gender) = LOWER(%s)", sql)
         self.assertIn("Female", params)
 
     def test_city_filter_uses_like(self):
@@ -34,8 +34,8 @@ class BuildProfileQueryTests(unittest.TestCase):
 
     def test_age_range_adds_both_conditions(self):
         sql, params = build_profile_query({"age_min": 21, "age_max": 35})
-        self.assertIn("CAST(Age AS SIGNED) >= ?", sql)
-        self.assertIn("CAST(Age AS SIGNED) <= ?", sql)
+        self.assertIn("CAST(Age AS SIGNED) >= %s", sql)
+        self.assertIn("CAST(Age AS SIGNED) <= %s", sql)
         self.assertIn(21, params)
         self.assertIn(35, params)
 
@@ -46,7 +46,7 @@ class BuildProfileQueryTests(unittest.TestCase):
 
     def test_subcaste_adds_like_on_caste(self):
         sql, params = build_profile_query({"subcaste": "kuli"})
-        self.assertIn("LOWER(Caste) LIKE LOWER(?)", sql)
+        self.assertIn("LOWER(Caste) LIKE LOWER(%s)", sql)
         self.assertIn("%kuli%", params)
 
     def test_custom_limit_applied(self):
@@ -67,7 +67,7 @@ class BuildProfileQueryTests(unittest.TestCase):
         where_clause = sql.split("WHERE")[1].split("ORDER BY")[0]
         conditions = [c.strip() for c in where_clause.split("AND")]
         self.assertGreaterEqual(len(conditions), 7)
-        self.assertIn("LOWER(Gender) = LOWER(?)", sql)
+        self.assertIn("LOWER(Gender) = LOWER(%s)", sql)
 
     def test_order_by_regdate_desc(self):
         sql, _ = build_profile_query({"gender": "Male"})
@@ -81,27 +81,30 @@ class BuildProfileQueryTests(unittest.TestCase):
             filters[key] = "test"
         sql, _ = build_profile_query(filters)
         for key, column in FIELD_MAP.items():
-            if key in ("city", "dist", "state", "subcaste", "education", "occupation",
+            if key in ("city", "dist", "state", "subcaste",
                        "age_min", "age_max", "income_min", "income_max",
                        "height_min", "height_max", "gothram"):
                 continue
-            self.assertIn(f"LOWER({column}) = LOWER(?)", sql)
+            if key in ("education", "occupation"):
+                self.assertIn(f"LOWER({column}) LIKE LOWER(%s)", sql)
+                continue
+            self.assertIn(f"LOWER({column}) = LOWER(%s)", sql)
 
 
 class BuildDetailQueryTests(unittest.TestCase):
     def test_by_matri_id(self):
         sql, params = build_detail_query(matri_id="MAT001")
-        self.assertIn("MatriID = ?", sql)
+        self.assertIn("MatriID = %s", sql)
         self.assertIn("MAT001", params)
 
     def test_by_name(self):
         sql, params = build_detail_query(name="Priya")
-        self.assertIn("LOWER(Name) LIKE LOWER(?)", sql)
+        self.assertIn("LOWER(Name) LIKE LOWER(%s)", sql)
         self.assertIn("%Priya%", params)
 
     def test_by_both_matri_id_and_name(self):
         sql, params = build_detail_query(matri_id="M1", name="Test")
-        self.assertIn("MatriID = ?", sql)
+        self.assertIn("MatriID = %s", sql)
         self.assertIn("LOWER(Name) LIKE", sql)
 
     def test_default_fields_first_seven_columns(self):

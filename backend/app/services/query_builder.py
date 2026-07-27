@@ -86,14 +86,19 @@ def build_profile_query(filters: dict, limit: int = 10) -> tuple[str, list]:
 
     for key, column in FIELD_MAP.items():
         value = filters.get(key)
-        if value:
-            conditions.append(f"LOWER({column}) = LOWER(?)")
+        if not value:
+            continue
+        if key in ("education", "occupation"):
+            conditions.append(f"LOWER({column}) LIKE LOWER(%s)")
+            params.append(f"%{value}%")
+        else:
+            conditions.append(f"LOWER({column}) = LOWER(%s)")
             params.append(str(value))
 
     city = filters.get("city")
     if city:
         conditions.append(
-            "(LOWER(City) LIKE LOWER(?) OR LOWER(Dist) LIKE LOWER(?) OR LOWER(State) LIKE LOWER(?))"
+            "(LOWER(City) LIKE LOWER(%s) OR LOWER(Dist) LIKE LOWER(%s) OR LOWER(State) LIKE LOWER(%s))"
         )
         like_val = f"%{city}%"
         params.extend([like_val, like_val, like_val])
@@ -101,7 +106,7 @@ def build_profile_query(filters: dict, limit: int = 10) -> tuple[str, list]:
     dist = filters.get("dist")
     if dist and not city:
         conditions.append(
-            "(LOWER(City) LIKE LOWER(?) OR LOWER(Dist) LIKE LOWER(?) OR LOWER(State) LIKE LOWER(?))"
+            "(LOWER(City) LIKE LOWER(%s) OR LOWER(Dist) LIKE LOWER(%s) OR LOWER(State) LIKE LOWER(%s))"
         )
         like_val = f"%{dist}%"
         params.extend([like_val, like_val, like_val])
@@ -109,37 +114,27 @@ def build_profile_query(filters: dict, limit: int = 10) -> tuple[str, list]:
     state = filters.get("state")
     if state and not city and not dist:
         conditions.append(
-            "(LOWER(City) LIKE LOWER(?) OR LOWER(Dist) LIKE LOWER(?) OR LOWER(State) LIKE LOWER(?))"
+            "(LOWER(City) LIKE LOWER(%s) OR LOWER(Dist) LIKE LOWER(%s) OR LOWER(State) LIKE LOWER(%s))"
         )
         like_val = f"%{state}%"
         params.extend([like_val, like_val, like_val])
 
     subcaste = filters.get("subcaste")
     if subcaste:
-        conditions.append("LOWER(Caste) LIKE LOWER(?)")
+        conditions.append("LOWER(Caste) LIKE LOWER(%s)")
         params.append(f"%{subcaste}%")
 
     age_min = filters.get("age_min")
     if age_min is not None:
-        conditions.append("CAST(Age AS SIGNED) >= ?")
+        conditions.append("CAST(Age AS SIGNED) >= %s")
         params.append(int(age_min))
 
     age_max = filters.get("age_max")
     if age_max is not None:
-        conditions.append("CAST(Age AS SIGNED) <= ?")
+        conditions.append("CAST(Age AS SIGNED) <= %s")
         params.append(int(age_max))
 
-    education = filters.get("education")
-    if education:
-        conditions.append("LOWER(Education) LIKE LOWER(?)")
-        params.append(f"%{education}%")
-
-    occupation = filters.get("occupation")
-    if occupation:
-        conditions.append("LOWER(Occupation) LIKE LOWER(?)")
-        params.append(f"%{occupation}%")
-
-    sql = SEARCH_SSL + f"FROM register WHERE {' AND '.join(conditions)} ORDER BY Regdate DESC LIMIT ?"
+    sql = SEARCH_SSL + f"FROM register WHERE {' AND '.join(conditions)} ORDER BY Regdate DESC LIMIT %s"
     params.append(limit)
 
     return sql, params
@@ -157,12 +152,12 @@ def build_detail_query(
     params: list[Any] = []
 
     if matri_id:
-        conditions.append("MatriID = ?")
+        conditions.append("MatriID = %s")
         params.append(matri_id)
     if name:
-        conditions.append("LOWER(Name) LIKE LOWER(?)")
+        conditions.append("LOWER(Name) LIKE LOWER(%s)")
         params.append(f"%{name}%")
 
-    sql = f"SELECT {cols_sql} FROM register WHERE {' AND '.join(conditions)} LIMIT ?"
+    sql = f"SELECT {cols_sql} FROM register WHERE {' AND '.join(conditions)} LIMIT %s"
     params.append(limit)
     return sql, params
