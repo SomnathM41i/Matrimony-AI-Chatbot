@@ -1,10 +1,80 @@
 import asyncio
+import re
 import mysql.connector
 from mysql.connector.pooling import MySQLConnectionPool
 from app.config import settings
+from app.core.constants import SENSITIVE_FIELDS
 from app.core.logger import logger
-from app.ai.sql_generator import generate_sql, validate_select_sql, sanitize_rows
-from app.ai.llm_client import GroqPayloadTooLargeError
+
+
+def validate_select_sql(sql: str, allowed_tables: set) -> str:
+    sql = (sql or "").strip()
+    sql = re.sub(r'\s+', ' ', sql)
+    if sql.endswith(";"):
+        sql = sql[:-1].strip()
+
+    lowered = sql.lower()
+
+    blocked_keywords = [
+        r'\b(insert|update|delete|drop|alter|truncate|create|replace|grant|revoke|call|exec|load)\b',
+        r'/\*', r'--', r'\bmysql_\w+',
+        r'\b(unions?)\b',
+        r'\binto\s+(outfile|dumpfile)\b',
+        r'\binformation_schema\b',
+        r'\b(0x[0-9a-f]+)\b',
+        r'\bchar\s*\(',
+        r'\b(sleep|benchmark|load_file)\s*\(',
+    ]
+    for pattern in blocked_keywords:
+        if re.search(pattern, lowered):
+            raise ValueError("Unsafe SQL pattern blocked.")
+
+    if not lowered.startswith("select "):
+        raise ValueError("Only SELECT queries are allowed.")
+    if ";" in lowered:
+        raise ValueError("Only one query is allowed.")
+
+    if re.search(r'\bselect\b.*\bfrom\b.*\bselect\b', lowered, re.DOTALL):
+        raise ValueError("Subqueries are not allowed.")
+
+    select_clause = re.split(r'\bfrom\b', lowered, maxsplit=1)[0]
+    star_without_count = re.sub(r'\bcount\s*\(\s*\*\s*\)', '', select_clause)
+    if re.search(r'(?:\b[a-z_][a-z0-9_]*\s*\.\s*)?\*', star_without_count):
+        raise ValueError("Wildcard column selection is not allowed.")
+
+    forbidden_fields = set(SENSITIVE_FIELDS) | {
+        "passwordhash", "passcode", "secret", "secret_key", "api_key",
+        "token", "refresh_token", "bank_account", "accountnumber",
+    }
+    referenced_identifiers = set(re.findall(r'\b[a-z_][a-z0-9_]*\b', lowered))
+    blocked_fields = sorted(referenced_identifiers & forbidden_fields)
+    if blocked_fields:
+        raise ValueError("Sensitive database columns are not accessible.")
+
+    referenced_tables = set(re.findall(r'\b(?:from|join)\s+`?([a-zA-Z0-9_]+)`?', lowered))
+    if not referenced_tables:
+        raise ValueError("No table found in SQL.")
+    if not referenced_tables.issubset(allowed_tables):
+        blocked = sorted(referenced_tables - allowed_tables)
+        allowed = ", ".join(sorted(allowed_tables))
+        raise ValueError(f"Access denied to tables: {', '.join(blocked)}. Allowed: {allowed}.")
+
+    if " limit " not in lowered:
+        sql += f" LIMIT {settings.SQL_LIMIT}"
+
+    return sql
+
+
+def sanitize_rows(rows: list[dict]) -> list[dict]:
+    clean_rows = []
+    for row in rows or []:
+        clean = {}
+        for key, value in row.items():
+            if key.lower() in SENSITIVE_FIELDS or "password" in key.lower():
+                continue
+            clean[key] = value
+        clean_rows.append(clean)
+    return clean_rows
 
 
 class DatabaseQueryError(RuntimeError):
@@ -80,16 +150,20 @@ def _sync_check_connection() -> bool:
         return False
 
 
+def _add_photo_url(row: dict):
+    photo = row.get("Photo1") or ""
+    if photo and photo.lower() != "nophoto.jpg":
+        row["PhotoURL"] = settings.PHOTO_BASE_URL.rstrip("/") + "/" + photo.lstrip("/")
+    else:
+        row["PhotoURL"] = ""
+
+
 def _sync_execute_llm_sql(sql: str) -> dict:
     sql = validate_select_sql(sql, settings.allowed_tables_set)
     rows = _sync_safe_query(sql)
     clean = sanitize_rows(rows or [])
     for row in clean:
-        photo = row.get("Photo1") or ""
-        if photo and photo.lower() != "nophoto.jpg":
-            row["PhotoURL"] = settings.PHOTO_BASE_URL.rstrip("/") + "/" + photo.lstrip("/")
-        else:
-            row["PhotoURL"] = ""
+        _add_photo_url(row)
     return {
         "sql": sql,
         "rows": clean,
@@ -119,71 +193,233 @@ def accumulate_usage(*usages):
     return total
 
 
-async def answer_database_question(message: str, history: list[dict] | None = None, db=None) -> dict:
-    sql_plan, sql_usage, sql_events = await generate_sql(
-        message, settings.allowed_tables_set, history=history, db=db
-    )
-    if not sql_plan.get("needs_database", True):
-        return {"content": sql_plan.get("answer_without_database", ""), "usage": sql_usage, "events": sql_events}
-    sql_result = await execute_llm_sql(sql_plan.get("sql", ""))
+def _sync_execute_param_query(sql: str, params: list) -> dict:
+    rows = _sync_safe_query(sql, tuple(params))
+    clean = sanitize_rows(rows or [])
+    for row in clean:
+        _add_photo_url(row)
+    return {
+        "sql": sql,
+        "rows": clean,
+        "row_count": len(rows or []),
+    }
+
+
+async def execute_param_query(sql: str, params: list) -> dict:
+    return await asyncio.to_thread(_sync_execute_param_query, sql, params)
+
+
+async def _format_notice_safe(message: str, notice: str, history, db, fallback: str = "") -> str:
+    try:
+        from app.services.llm_service import format_db_notice
+        result = await format_db_notice(message, notice, history=history, db=db)
+        return result.get("content", "") or fallback or notice
+    except Exception:
+        return fallback or notice
+
+
+def _merge_filters(accumulated: dict | None, new_filters: dict) -> dict:
+    merged = dict(accumulated or {})
+    for key, value in new_filters.items():
+        if value is not None:
+            merged[key] = value
+    return merged
+
+
+def _build_metadata(profile_rows, filters):
+    if profile_rows:
+        return {
+            "profile_candidates": profile_rows,
+            "selected_profile": profile_rows[0] if len(profile_rows) == 1 else None,
+            "accumulated_filters": filters,
+        }
+    return {"accumulated_filters": filters}
+
+
+async def _handle_profile_search(
+    message: str, filters: dict, limit: int, history, db
+) -> dict:
+    from app.services.query_builder import build_profile_query
+    from app.services.llm_service import format_db_result
+
+    sql, params = build_profile_query(filters, limit=limit)
+    sql_result = await execute_param_query(sql, params)
+
     profile_rows = [
         {"MatriID": row.get("MatriID"), "Name": row.get("Name")}
         for row in sql_result["rows"]
         if row.get("Name")
     ]
-    metadata = {
-        "profile_candidates": profile_rows,
-        "selected_profile": profile_rows[0] if len(profile_rows) == 1 else None,
-    } if profile_rows else None
+    metadata = _build_metadata(profile_rows, filters)
 
     if sql_result["row_count"] == 0:
-        from app.services.llm_service import format_db_notice
-        notice = await format_db_notice(
+        try:
+            from app.services.embedding_service import embed_text, build_profile_document
+            from app.services.vector_service import search_with_filters, get_client
+
+            get_client(host=settings.QDRANT_HOST, port=settings.QDRANT_PORT)
+
+            query_text = build_profile_document(filters)
+            query_vector = embed_text(
+                f"query: {message}. {query_text}",
+                model_name=settings.EMBEDDING_MODEL,
+            )
+            vector_rows = search_with_filters(
+                query_vector,
+                filters=filters,
+                limit=limit,
+                host=settings.QDRANT_HOST,
+                port=settings.QDRANT_PORT,
+            )
+            if vector_rows:
+                for row in vector_rows:
+                    _add_photo_url(row)
+                vector_result = {
+                    "sql": "vector_search",
+                    "rows": vector_rows,
+                    "row_count": len(vector_rows),
+                }
+                profile_rows = [
+                    {"MatriID": row.get("MatriID"), "Name": row.get("Name")}
+                    for row in vector_rows if row.get("Name")
+                ]
+                metadata = {
+                    "profile_candidates": profile_rows,
+                    "selected_profile": profile_rows[0] if len(profile_rows) == 1 else None,
+                    "accumulated_filters": filters,
+                } if profile_rows else {"accumulated_filters": filters}
+
+                try:
+                    formatted = await format_db_result(message, vector_result, history=history, db=db)
+                except Exception:
+                    formatted = {"content": f"Found {len(vector_rows)} matching profiles.", "usage": {}, "events": []}
+
+                return {
+                    "content": formatted["content"],
+                    "is_profile_search": True,
+                    "usage": formatted.get("usage", {}),
+                    "events": formatted.get("events", []),
+                    "metadata": metadata,
+                }
+        except Exception as e:
+            logger.warning(f"Vector search fallback failed: {e}")
+
+        msg = await _format_notice_safe(
             message,
-            "No matching results were found. Suggest trying a different city, caste, or age range.",
-            history=history,
-            db=db,
+            "No matching profiles found. Suggest trying a different city, caste, or age range.",
+            history, db, "No matching profiles found.",
         )
-        return {
-            "content": notice["content"],
-            "usage": accumulate_usage(sql_usage, notice.get("usage", {})),
-            "events": sql_events + notice.get("events", []),
-            "metadata": metadata,
-        }
+        return {"content": msg, "is_profile_search": True, "usage": {}, "events": [], "metadata": metadata}
 
     if sql_result["row_count"] > settings.MAX_ROWS_BEFORE_NARROW:
-        from app.services.llm_service import format_db_notice
-        notice = await format_db_notice(
+        msg = await _format_notice_safe(
             message,
-            f"The search found {sql_result['row_count']} results, too many to show at once. Ask the user to add more specific criteria.",
-            history=history,
-            db=db,
+            f"The search found {sql_result['row_count']} results, too many to show. Ask the user to add more criteria.",
+            history, db,
+            f"The search found {sql_result['row_count']} results, too many to show at once. Please add more specific criteria.",
         )
-        return {
-            "content": notice["content"],
-            "usage": accumulate_usage(sql_usage, notice.get("usage", {})),
-            "events": sql_events + notice.get("events", []),
-            "metadata": metadata,
-        }
+        return {"content": msg, "is_profile_search": True, "usage": {}, "events": [], "metadata": metadata}
 
-    from app.services.llm_service import format_db_result
     try:
         formatted = await format_db_result(message, sql_result, history=history, db=db)
-    except GroqPayloadTooLargeError:
-        return {
-            "content": (
-                "Your search returned too many results for me to process in one go. "
-                "Please narrow your search by adding more specific criteria."
-            ),
-            "usage": sql_usage,
-            "events": sql_events,
-        }
+    except Exception:
+        msg = await _format_notice_safe(
+            message,
+            "Your search returned too many results. Please narrow your search with more specific criteria.",
+            history, db,
+            "Your search returned too many results for me to process in one go. Please narrow your search.",
+        )
+        return {"content": msg, "is_profile_search": True, "usage": {}, "events": [], "metadata": metadata}
+
     return {
         "content": formatted["content"],
-        "usage": accumulate_usage(sql_usage, formatted.get("usage", {})),
-        "events": sql_events + formatted.get("events", []),
+        "is_profile_search": True,
+        "usage": formatted.get("usage", {}),
+        "events": formatted.get("events", []),
         "metadata": metadata,
     }
+
+
+async def _handle_profile_detail(
+    message: str, fields: list[str] | None, limit: int, history, db,
+    selected_profile: dict | None = None,
+) -> dict:
+    from app.services.query_builder import build_detail_query
+
+    matri_id = selected_profile.get("MatriID") if selected_profile else None
+    name = selected_profile.get("Name") if selected_profile else None
+
+    if not matri_id and not name:
+        msg = await _format_notice_safe(
+            message,
+            "Which profile would you like details about? Please select one first.",
+            history, db,
+            "Which profile would you like details about? Please select one first.",
+        )
+        return {"content": msg, "is_profile_search": False, "usage": {}, "events": [], "metadata": None}
+
+    sql, params = build_detail_query(matri_id=matri_id, name=name, fields=fields, limit=limit)
+    sql_result = await execute_param_query(sql, params)
+
+    if not sql_result.get("rows"):
+        msg = await _format_notice_safe(message, "Profile not found.", history, db, "Profile not found.")
+        return {"content": msg, "is_profile_search": True, "usage": {}, "events": [], "metadata": None}
+
+    from app.services.llm_service import format_db_result
+
+    for row in sql_result["rows"]:
+        _add_photo_url(row)
+
+    try:
+        formatted = await format_db_result(message, sql_result, history=history, db=db)
+    except Exception:
+        formatted = {"content": "Here are the profile details.", "usage": {}, "events": []}
+
+    return {
+        "content": formatted["content"],
+        "is_profile_search": True,
+        "usage": formatted.get("usage", {}),
+        "events": formatted.get("events", []),
+        "metadata": {
+            "selected_profile": selected_profile,
+            "accumulated_filters": {},
+        },
+    }
+
+
+async def answer_database_question_hybrid(
+    message: str,
+    history: list[dict] | None = None,
+    db=None,
+    conversation_context: dict | None = None,
+) -> dict:
+    from app.services.extraction_service import extract_search_params
+
+    ctx = conversation_context or {}
+    accumulated_filters = ctx.get("accumulated_filters")
+    selected_profile = ctx.get("selected_profile")
+
+    extraction = await extract_search_params(message, history=history, db=db)
+    intent = extraction.get("intent", "general")
+
+    if intent == "profile_detail":
+        return await _handle_profile_detail(
+            message,
+            fields=extraction.get("fields"),
+            limit=extraction.get("limit", 1),
+            history=history,
+            db=db,
+            selected_profile=selected_profile,
+        )
+
+    if intent != "profile_search":
+        return {"content": None, "is_profile_search": False, "usage": {}, "events": [], "metadata": None}
+
+    new_filters = extraction.get("filters", {})
+    filters = _merge_filters(accumulated_filters, new_filters)
+    limit = extraction.get("limit", 10)
+
+    return await _handle_profile_search(message, filters, limit, history, db)
 
 
 def get_database_stats() -> dict:

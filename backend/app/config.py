@@ -61,6 +61,10 @@ class Settings(BaseSettings):
 
     CHAT_TITLE_TRUNCATION: int = 60
     CHAT_HISTORY_LIMIT: int = 30
+    QDRANT_HOST: str = "localhost"
+    QDRANT_PORT: int = 6333
+    EMBEDDING_MODEL: str = "BAAI/bge-m3"
+    EMBEDDING_BATCH_SIZE: int = 100
 
     DB_HOST: str = "localhost"
     DB_PORT: int = 3306

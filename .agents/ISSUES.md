@@ -41,3 +41,34 @@
 - Affected files: `backend/app/ai/gateway.py` and admin model/route health endpoints.
 - Severity: Medium before deployment, not a code-completion blocker.
 - Status: Open deployment task. Unit/integration tests validate normalized cost and complete chat accounting with mocked AI results; admins can run live model and route tests after secrets are installed.
+
+## LLM hallucinates fake matrimonial profiles
+
+- Root cause (primary): `BASE_SYSTEM_PROMPT` lines 19-22 contain contradictory directives — "NEVER say you don't have access to member information" conflicts with "NEVER invent profile details." When intent misclassification routes a profile query to the general response path, the model can neither refuse nor answer truthfully, so it fabricates profiles.
+- Root cause (secondary): Intent classifier uses llama-3.1-8b with only 10 max tokens, which frequently misclassifies Marathi/mixed-language queries about subcastes like "96 Kuli Maratha" as "general" instead of "database."
+- Root cause (tertiary): `FORMAT_SYSTEM_PROMPT` example names ("Sneha Patil", "Priya Sharma") leak into LLM output as fabricated profile data.
+- Affected files: `backend/app/core/prompts.py` (BASE_SYSTEM_PROMPT lines 19-22, FORMAT_SYSTEM_PROMPT lines 72-73), `backend/app/ai/intent_llm.py` (small model, 10 tokens), `backend/app/services/chat_service.py` (no safety gate in general path).
+- Severity: Critical — users receive fake personal data (names, ages, photos) for non-existent members.
+- Status: Phase 1 fix in progress (prompt fix + safety gate). Full solution via Hybrid RAG pipeline (Phases 2-5).
+- Resolution plan:
+  - Phase 1: Fix `BASE_SYSTEM_PROMPT` contradictions. Add safety gate in general path. Change example names in `FORMAT_SYSTEM_PROMPT`.
+  - Phase 2: Replace intent detection with structured extraction (LLM outputs JSON filters only, never SQL).
+  - Phase 3: Python query builder (parameterized SQL, no LLM SQL generation).
+  - Phase 4: Hybrid MySQL + Qdrant semantic search fallback.
+  - Phase 5: Conversation memory for multi-turn refinement.
+  - Feature flag `CHAT_ENGINE` allows gradual migration and rollback.
+
+## Python 3.14 compatibility for ML dependencies
+
+- Root cause: The development laptop runs Python 3.14.x. PyTorch and sentence-transformers may not have official wheels for Python 3.14, requiring compilation from source or fallback to CPU-only builds.
+- Affected files: `backend/requirements.txt`, deployment environment.
+- Severity: Medium — may cause installation delays or require Python version downgrade.
+- Status: Open. To be verified during Phase 3 (embedding service). Alternative: use Python 3.12 if 3.14 compatibility fails.
+
+## bge-m3 memory requirements on KVM 1 VPS
+
+- Root cause: BAAI/bge-m3 requires ~4-6GB RAM for CPU-based inference. The existing Hostinger KVM 1 VPS has only 1GB RAM.
+- Affected files: `backend/app/services/embedding_service.py`, deployment architecture.
+- Severity: High — the embedding model cannot run on the main app VPS.
+- Status: Design decision — bge-m3 runs on the same VPS as the main application. The VPS may need upgrading to KVM 2 (2GB RAM) or KVM 4 (4GB RAM) for inference. Alternative: load the model lazily or use a smaller model for the main VPS and keep bge-m3 for indexing only.
+- Resolution: Test bge-m3 RAM usage on laptop first. If VPS cannot handle it, options include: (1) upgrade VPS plan, (2) use a smaller embedding model on the app VPS, (3) run embeddings on a separate instance.

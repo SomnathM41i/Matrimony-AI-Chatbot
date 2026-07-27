@@ -1,5 +1,14 @@
 # Architecture
 
+## Legacy Architecture (Intent → SQL generation)
+
+```text
+User Message
+  -> Intent Classifier (llama-3.1-8b, 10 tokens) -> "database" or "general"
+    -> "database": SQL Generator (llama-3.3-70b) -> raw SQL -> MySQL -> Formatter -> Response
+    -> "general": BASE_SYSTEM_PROMPT -> LLM -> Response (HALLUCINATION RISK)
+```
+
 ## Current Architecture
 
 ```text
@@ -10,7 +19,49 @@ React/Vite frontend
      -> read-only validated queries -> MySQL matrimony DB
 ```
 
-## Target Subscription and AI Architecture
+## Target Architecture (Hybrid RAG)
+
+```text
+User Message (English / Marathi / Hindi / Hinglish / mixed)
+  |
+  | [Feature Flag: CHAT_ENGINE = legacy | hybrid_rag]
+  |
+  v
+STRUCTURED EXTRACTION (llama-3.3-70b) -> structured JSON filters only
+  |                                       (NO SQL generation by LLM)
+  v
+PYTHON QUERY BUILDER -> parameterized SQL -> MySQL
+  |
+  +-- Results found? --> GROUNDED GENERATION -> Formatted Response
+  |
+  +-- No results? ----> Metadata Filtering --> Qdrant Vector Search
+                            |                    (bge-m3 embeddings)
+                            v
+                        GROUNDED GENERATION -> "No matching profiles found."
+```
+
+## Qdrant Vector Database (Separate Instance)
+
+```text
+                    +------------------+
+                    |   Qdrant VPS     |
+                    |  (KVM 1, 1GB)    |
+                    +------------------+
+                           |
+                    gRPC/REST API
+                           |
+                    +------------------+
+                    |   Main App VPS   |
+                    |  (KVM 1, 1GB)    |
+                    +------------------+
+                    Profiles indexed as:
+                    - Vector: bge-m3 embedding (1024d)
+                    - Payload: Gender, Age, Caste, City, Religion,
+                               Education, Occupation, Maritalstatus, Photo1
+                    - Filters applied BEFORE vector search
+```
+
+## Target Hybrid RAG Architecture
 
 ```text
 Chat route

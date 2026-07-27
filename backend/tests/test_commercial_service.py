@@ -127,26 +127,28 @@ class CommercialChatIntegrationTests(unittest.IsolatedAsyncioTestCase):
             )
             db.add(subscription)
             await db.commit()
-            intent = {
-                "usage": {"prompt_tokens": 10, "completion_tokens": 1, "total_tokens": 11},
-                "events": [{"task_key": "intent_detection", "provider_code": "p", "model_external_id": "intent", "total_tokens": 11}],
-            }
-            answer = {
+            hybrid_result = {
                 "content": "Hello",
-                "usage": {"prompt_tokens": 20, "completion_tokens": 2, "total_tokens": 22},
-                "events": [{"task_key": "general_chat", "provider_code": "p", "model_external_id": "chat", "total_tokens": 22}],
+                "is_profile_search": False,
+                "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+                "events": [{"task_key": "general_chat", "provider_code": "p", "model_external_id": "chat", "total_tokens": 15}],
+                "metadata": None,
             }
-            with patch("app.services.chat_service.detect_intent_with_llm", new=AsyncMock(return_value=(False, intent))), patch(
-                "app.services.chat_service.get_general_response", new=AsyncMock(return_value=answer)
+            with patch(
+                "app.services.chat_service.answer_database_question_hybrid",
+                new=AsyncMock(return_value=hybrid_result),
+            ), patch(
+                "app.services.chat_service.get_general_response",
+                new=AsyncMock(return_value=hybrid_result),
             ):
                 result = await ChatService(db).process_message(user.id, "Hi")
             await db.commit()
             await db.refresh(subscription)
             events = (await db.execute(select(AIUsageEvent))).scalars().all()
             self.assertEqual(result["credits_charged"], 1)
-            self.assertEqual(result["usage"]["total_tokens"], 33)
+            self.assertEqual(result["usage"]["total_tokens"], 15)
             self.assertEqual(subscription.credits_used, 1)
-            self.assertEqual(len(events), 2)
+            self.assertEqual(len(events), 1)
         await engine.dispose()
 
 

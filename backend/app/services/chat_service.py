@@ -3,8 +3,7 @@ from app.config import settings
 from app.repositories.conversation_repository import ConversationRepository
 from app.repositories.chat_repository import ChatRepository
 from app.services.llm_service import get_general_response
-from app.services.db_query_service import answer_database_question, DatabaseQueryError
-from app.ai.intent_llm import detect_intent_with_llm
+from app.services.db_query_service import answer_database_question_hybrid, DatabaseQueryError
 from app.core.logger import logger
 from datetime import datetime, timezone
 import httpx
@@ -40,25 +39,58 @@ def user_facing_error(error: Exception) -> str:
     return "Sorry, I couldn't process your request right now. Please try again or rephrase it."
 
 
+def _is_profile_query(message: str, history: list[dict] | None = None) -> bool:
+    msg = message.lower()
+    profile_keywords = {
+        "profile", "profiles", "member", "members", "bride", "groom",
+        "girl", "girls", "boy", "boys", "woman", "women", "man", "men",
+        "mulgi", "muli", "मुलगी", "मुली", "महिला",
+        "mula", "mule", "मुलगा", "मुले", "पुरुष",
+        "वधू", "वर", "प्रोफाइल", "सदस्य",
+        "ladki", "ladkiyan", "लड़की", "लड़कियां",
+        "unmarried", "divorced", "widow", "marital",
+    }
+    community_keywords = {
+        "maratha", "brahmin", "mali", "kunbi", "dhangar",
+        "hindu", "muslim", "buddhist", "jain", "christian", "sikh",
+        "मराठा", "ब्राह्मण", "माळी", "हिंदू",
+        "jat", "जात", "धर्म", "caste", "religion",
+        "kuli", "कुळी",
+    }
+    has_profile_words = any(kw in msg for kw in profile_keywords)
+    has_community_words = any(kw in msg for kw in community_keywords)
+    has_search_verb = any(
+        w in msg for w in [
+            "show", "search", "find", "list", "दाखवा", "शोधा",
+            "show me", "need", "want", "looking", "require",
+            "हवी", "हवे", "पाहिजे",
+        ]
+    )
+    return has_profile_words or has_community_words or has_search_verb
+
+
 class ChatService:
     def __init__(self, db: AsyncSession):
         self.db = db
         self.conv_repo = ConversationRepository(db)
         self.msg_repo = ChatRepository(db)
 
-    async def _load_history(self, conversation_id: int) -> list[dict]:
+    async def _load_history(self, conversation_id: int) -> tuple[list[dict], dict]:
         msgs = await self.msg_repo.list_by_conversation(conversation_id)
         history = []
         selected_profile = None
+        accumulated_filters = None
         for m in reversed(msgs):
             if not m.metadata_json:
                 continue
             try:
                 metadata = json.loads(m.metadata_json)
-                selected_profile = metadata.get("selected_profile")
+                selected_profile = selected_profile or metadata.get("selected_profile")
+                if metadata.get("accumulated_filters") and accumulated_filters is None:
+                    accumulated_filters = metadata["accumulated_filters"]
             except (TypeError, ValueError):
                 continue
-            if selected_profile:
+            if selected_profile and accumulated_filters is not None:
                 break
 
         if selected_profile:
@@ -74,7 +106,7 @@ class ChatService:
 
         for m in msgs[-settings.CHAT_HISTORY_LIMIT:]:
             history.append({"role": m.role, "content": m.content})
-        return history
+        return history, {"accumulated_filters": accumulated_filters, "selected_profile": selected_profile}
 
     async def process_message(
         self, user_id: int, message: str, conversation_id: int | None = None
@@ -93,7 +125,7 @@ class ChatService:
         # Persist the reservation before the external call so concurrent requests see it.
         await self.db.commit()
 
-        history = await self._load_history(conv.id)
+        history, conversation_context = await self._load_history(conv.id)
 
         user_msg = await self.msg_repo.create(
             conversation_id=conv.id,
@@ -108,18 +140,39 @@ class ChatService:
         credits_charged = 0
         response_metadata = None
         try:
-            is_database, intent_result = await detect_intent_with_llm(
-                message, history=history, db=self.db, include_result=True
+            result = await answer_database_question_hybrid(
+                message, history=history, db=self.db,
+                conversation_context=conversation_context,
             )
-            events.extend(intent_result.get("events", []))
-            intent_usage = intent_result.get("usage", {})
-            for key in usage:
-                usage[key] += intent_usage.get(key, 0) or 0
-            if is_database:
+            if result.get("is_profile_search", False):
                 request_type = "database"
-                result = await answer_database_question(message, history=history, db=self.db)
             else:
-                result = await get_general_response(message, history=history, db=self.db)
+                request_type = "normal"
+                if _is_profile_query(message, history):
+                    from app.services.llm_service import format_db_notice
+                    try:
+                        notice = await format_db_notice(
+                            message,
+                            "No matching profiles found. Suggest trying a different city, caste, or age range.",
+                            history=history, db=self.db,
+                        )
+                        reply_text = notice.get("content", "No matching profiles found.")
+                    except Exception:
+                        reply_text = "No matching profiles found."
+                    response_metadata = None
+                    credits_charged = await finalize_usage(
+                        self.db, request_id, "general", True
+                    )
+                    result = {
+                        "content": reply_text,
+                        "metadata": None,
+                        "usage": {},
+                        "events": [],
+                    }
+                else:
+                    result = await get_general_response(
+                        message, history=history, db=self.db
+                    )
             reply_text = result["content"]
             response_metadata = result.get("metadata")
             events.extend(result.get("events", []))

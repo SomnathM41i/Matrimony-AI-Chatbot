@@ -41,13 +41,32 @@
 
 ## Existing Conventions and Important Files
 
+### New Hybrid RAG Module (2026-07-26)
+
+- `backend/app/services/extraction_service.py` — Structured extraction: LLM outputs only JSON filters, never SQL.
+- `backend/app/services/query_builder.py` — Python query builder: builds parameterized SQL from structured filters.
+- `backend/app/services/embedding_service.py` — Local multilingual embeddings via BAAI/bge-m3 (1024d, 100+ languages).
+- `backend/app/services/vector_service.py` — Qdrant client wrapper: metadata filtering + vector search.
+- `backend/app/services/indexing_service.py` — Automatic profile re-indexing on schema change.
+- `backend/app/services/schema_discovery.py` — Auto-discovers tables, columns, distinct values from MySQL.
+- `backend/app/services/example_generator.py` — Generates multilingual example queries from real data.
+- `backend/app/core/prompts.py` — Added: `STRUCTURED_EXTRACTION_PROMPT`, `GROUNDED_GENERATION_PROMPT`.
+  - Fixed: `BASE_SYSTEM_PROMPT` — removed contradictory "never refuse" directive.
+  - Fixed: `FORMAT_SYSTEM_PROMPT` — changed example names to obviously fake placeholders.
+- `backend/app/config.py` — Added: `CHAT_ENGINE` (legacy|hybrid_rag), embedding model config, Qdrant URL.
+
+### Legacy Modules (to be removed after validation)
+
+- `backend/app/ai/intent_llm.py` — Intent classification (replaced by structured extraction).
+- `backend/app/ai/intent_detector.py` — Keyword fallback (replaced by safety gate).
+- `backend/app/ai/sql_generator.py` — LLM SQL generation (replaced by query builder). `validate_select_sql` kept for safety.
 - Settings: `backend/app/config.py`.
 - App startup and routers: `backend/app/main.py`.
 - Local DB setup: `backend/app/database.py`.
 - Authentication: `backend/app/api/auth_routes.py`, `backend/app/core/auth.py`.
 - Chat route/service: `backend/app/api/chat_routes.py`, `backend/app/services/chat_service.py`.
 - Current AI HTTP client: `backend/app/ai/llm_client.py`.
-- AI tasks: `backend/app/ai/intent_llm.py`, `backend/app/ai/sql_generator.py`, `backend/app/services/llm_service.py`.
+- AI tasks (legacy): `backend/app/ai/intent_llm.py`, `backend/app/ai/sql_generator.py`, `backend/app/services/llm_service.py`.
 - MySQL execution: `backend/app/services/db_query_service.py`.
 - Frontend router: `frontend/src/app/router.jsx`.
 - Admin pages: `frontend/src/pages/admin/`.

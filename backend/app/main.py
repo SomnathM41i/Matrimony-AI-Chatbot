@@ -14,6 +14,25 @@ from app.database import create_tables
 async def lifespan(app: FastAPI):
     logger.info(f"myvivahai Chatbot starting [{settings.APP_ENV}]")
     await create_tables()
+
+    from app.services.schema_discovery import refresh_cache
+    refresh_cache()
+
+    try:
+        from app.services.vector_service import get_client
+        client = get_client(host=settings.QDRANT_HOST, port=settings.QDRANT_PORT)
+        collections = client.get_collections().collections
+        from app.services.vector_service import COLLECTION_NAME
+        col = next((c for c in collections if c.name == COLLECTION_NAME), None)
+        if col is None or col.points_count == 0:
+            logger.info("Qdrant collection empty, triggering auto re-index...")
+            from app.services.indexing_service import reindex_all
+            await reindex_all()
+        else:
+            logger.info(f"Qdrant collection ready ({col.points_count} points)")
+    except Exception as e:
+        logger.warning(f"Qdrant not available at startup: {e}")
+
     yield
     logger.info("myvivahai Chatbot shutting down")
 

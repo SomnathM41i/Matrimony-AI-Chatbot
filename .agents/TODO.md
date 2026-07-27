@@ -1,46 +1,56 @@
 # Tasks
 
-## Chat error rendering
+## Hybrid RAG Pipeline
 
-- [x] Prevent API error objects from crashing the React chat screen.
-  - Related files: `frontend/src/hooks/useChat.js`, chat UI components/services, frontend tests or production build, `.agents/`.
-  - Priority: Critical.
-  - Status: Completed and verified 2026-07-23.
-  - Dependencies: backend structured quota errors and Axios response handling.
-  - Notes/risks: structured error codes remain available in the Axios response while JSX and toast rendering receive only a safe user-facing string; the transient Vite proxy reset was distinct from the confirmed HTTP 429 quota response.
-  - Validation: structured `{code, message}` conversion check passed, frontend production build passed, and `git diff --check` passed.
+### Phase 1 — Hallucination Fixes
+- [x] Fix contradictory directives in BASE_SYSTEM_PROMPT
+- [x] Add safety gate in chat_service.py
+- [x] Replace example names with placeholders
 
-## General-response quality
+### Phase 2 — Structured Extraction + Query Builder
+- [x] STRUCTURED_EXTRACTION_PROMPT in prompts.py
+- [x] extraction_service.py (search + detail intents)
+- [x] query_builder.py (search + detail queries, all register columns)
 
-- [x] Stop exposing reasoning commentary and stop forcing unrelated requests back to matchmaking.
-  - Related files: `backend/app/core/prompts.py`, `backend/tests/test_chat_error_messages.py`, `.agents/`.
-  - Priority: High.
-  - Status: Completed and verified 2026-07-23.
-  - Dependencies: general-chat task routing and existing multilingual behavior.
-  - Notes/risks: preserved database safety, multilingual replies, and the matchmaker tone for genuinely matrimony-related requests; harmless general questions and code requests are now answered directly.
-  - Validation: 29 backend tests passed, including three prompt-quality regressions.
+### Phase 3 — Embedding + Vector Search
+- [x] Install qdrant-client, sentence-transformers, torch
+- [x] embedding_service.py (BAAI/bge-m3)
+- [x] vector_service.py (Qdrant client, metadata filters)
+- [x] indexing_service.py (batch reindex)
+- [x] Qdrant deployed on VPS (187.127.170.116:6333)
 
-## Dynamic AI, Plans, Subscriptions, Payments, and Administration
+### Phase 4 — Schema Discovery + Auto-Index
+- [x] schema_discovery.py (auto-discover tables/columns/values)
+- [x] example_generator.py (dynamic multilingual examples from real data)
+- [x] Auto-reindex on startup in main.py lifespan
+- [x] docs/qdrant-setup.md
 
-- [x] Implement a provider/model-independent commercial module with dynamic admin control.
-  - Related files: `backend/app/{models,schemas,repositories,services,api,ai}/`, `backend/app/main.py`, `backend/app/database.py`, `frontend/src/{app,pages,components,hooks,services}/`, `.agents/`.
-  - Priority: Critical.
-  - Status: Completed and verified 2026-07-23 02:20 +05:30.
-  - Dependencies: existing auth/admin roles, SQLite application DB, Groq integration, external MySQL, future payment credentials.
-  - Notes/risks: must remain backward-compatible; quotas require atomic reservation; current intent usage is not included in stored totals; payment live activation cannot be fully verified without a selected provider and credentials; model capability checks are required before route publication.
-  - Expected scope: provider/model registry, task routing and fallback, normalized usage/cost ledger, versioned plan catalogue, subscriptions, quotas, payment abstraction, admin APIs/UI, customer plan/usage UI, tests, and documentation.
-  - Validation: 26 backend tests passed; frontend production build passed; application startup and public plan API smoke test returned Free/Basic/Silver; `git diff --check` passed.
+### Phase 5 — Integration + Conversation Memory
+- [x] answer_database_question_hybrid() with MySQL → Qdrant fallback
+- [x] CHAT_ENGINE feature flag (hybrid_rag / legacy)
+- [x] Conversation memory: filter accumulation + detail context across turns
+- [x] profile_detail intent for family/education/horoscope/income etc.
+- [x] Multilingual responses for all error/notice messages via format_db_notice()
+- [ ] Remove legacy modules (intent_llm.py, intent_detector.py, sql_generator.py)
+      — Wait until hybrid_rag validated in production for 1+ week
 
-- [!] Install and verify a live payment-gateway adapter.
-  - Related files: `backend/app/services/payment_gateway.py`, commercial payment APIs, gateway configuration in the admin console.
-  - Priority: High before accepting online payments.
-  - Status: Blocked pending the business choice of gateway plus sandbox credentials and webhook secret.
-  - Dependencies: provider account, approved redirect/webhook URLs, refund/cancellation policy.
-  - Notes: manual admin verification is intentionally active; the application does not claim live checkout is available.
+## Testing
+- [ ] Unit tests for extraction_service.py (High priority)
+- [ ] Unit tests for query_builder.py (High priority)
+- [ ] Unit tests for embedding_service.py (Medium)
+- [ ] Integration tests for vector_service.py (Medium)
+- [ ] End-to-end tests for hybrid RAG pipeline (High)
 
-- [ ] Run deployment acceptance tests with the selected AI providers and production database copy.
-  - Related files: AI provider/model routes, deployment environment, commercial database tables.
-  - Priority: High before production rollout.
-  - Status: Pending.
-  - Dependencies: deployed provider secrets, reachable MySQL, staging deployment.
-  - Notes: model health-test and route-test controls are available in the admin console.
+## Deployment
+- [ ] Run `reindex_profiles.py` one-time to load 5105 profiles into Qdrant (~11 min)
+- [ ] Restart FastAPI server to pick up latest code
+- [ ] Run deployment acceptance tests
+- [ ] Install and verify live payment-gateway adapter (blocked — needs business choice)
+
+## Verification
+- [x] 29/29 backend tests passing
+- [ ] Test end-to-end: "96 kuli maratha kolhapur engineer mulgi" → MySQL results
+- [ ] Test end-to-end: "modern but traditional girl" → Qdrant vector fallback
+- [ ] Test: "mala pune til mulgi dakhav" → Marathi profiles
+- [ ] Test: "tell me about her family" → profile_detail → family fields
+- [ ] Test: "tice shikshan kay aahe" → Marathi detail → education
