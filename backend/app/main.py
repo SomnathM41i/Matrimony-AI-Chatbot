@@ -19,17 +19,22 @@ async def lifespan(app: FastAPI):
     refresh_cache()
 
     try:
-        from app.services.vector_service import get_client
+        from app.services.vector_service import get_client, COLLECTION_NAME
         client = get_client(host=settings.QDRANT_HOST, port=settings.QDRANT_PORT)
-        collections = client.get_collections().collections
-        from app.services.vector_service import COLLECTION_NAME
-        col = next((c for c in collections if c.name == COLLECTION_NAME), None)
-        if col is None or col.points_count == 0:
-            logger.info("Qdrant collection empty, triggering auto re-index...")
+        collections = [c.name for c in client.get_collections().collections]
+        if COLLECTION_NAME not in collections:
+            logger.info("Qdrant collection not found, triggering auto re-index...")
             from app.services.indexing_service import reindex_all
             await reindex_all()
         else:
-            logger.info(f"Qdrant collection ready ({col.points_count} points)")
+            col_info = client.get_collection(COLLECTION_NAME)
+            points = getattr(col_info, 'points_count', getattr(col_info, 'vectors_count', 0))
+            if points == 0:
+                logger.info("Qdrant collection empty, triggering auto re-index...")
+                from app.services.indexing_service import reindex_all
+                await reindex_all()
+            else:
+                logger.info(f"Qdrant collection ready ({points} points)")
     except Exception as e:
         logger.warning(f"Qdrant not available at startup: {e}")
 
