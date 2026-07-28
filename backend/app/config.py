@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     GROQ_MODEL: str = "llama-3.3-70b-versatile"
     GROQ_VERIFY_SSL: bool = True
 
+    LLM_PROVIDER: str = "ollama"   # "ollama" or "groq"
+
     DEFAULT_TEMPERATURE: float = 0.5
     DEFAULT_MAX_TOKENS: int = 1200
 
@@ -41,7 +43,7 @@ class Settings(BaseSettings):
     SQL_TEMPERATURE: float = 0.0
     SQL_MAX_TOKENS: int = 900
 
-    FORMAT_TEMPERATURE: float = 0.2
+    FORMAT_TEMPERATURE: float = 0.0
     FORMAT_MAX_TOKENS: int = 1400
 
     MAX_PAYLOAD_CHARS: int = 20000

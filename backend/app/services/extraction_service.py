@@ -6,6 +6,7 @@ from app.ai.llm_client import call_groq
 from app.ai.gateway import call_ai
 from app.core.logger import logger
 from app.services.example_generator import generate_examples
+from app.services.schema_discovery import build_schema_context
 
 
 DEFAULT_FILTERS = {
@@ -154,7 +155,8 @@ async def extract_search_params(
         return {"intent": "general", "filters": {}, "limit": 10}
 
     dynamic_examples = generate_examples()
-    full_prompt = STRUCTURED_EXTRACTION_PROMPT + "\n\n" + dynamic_examples
+    schema_ctx = build_schema_context()
+    full_prompt = STRUCTURED_EXTRACTION_PROMPT + "\n\n### LIVE SCHEMA CONTEXT ###\n" + schema_ctx + "\n\n" + dynamic_examples
     messages = [{"role": "system", "content": full_prompt}]
     if history:
         messages.extend(history)

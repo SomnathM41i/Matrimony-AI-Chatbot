@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 import random
 import time
@@ -167,7 +168,162 @@ async def call_ai(
                 task_key, provider.code, model.external_id, error.response.status_code,
             )
             continue
-        except (httpx.TimeoutException, AIProviderUnavailableError, KeyError, ValueError) as error:
+        except (httpx.TimeoutException, httpx.ConnectError, AIProviderUnavailableError, KeyError, ValueError) as error:
+            last_error = error
+            logger.warning(
+                "AI route target failed task=%s provider=%s model=%s error=%s",
+                task_key,
+                provider.code,
+                model.external_id,
+                type(error).__name__,
+            )
+            continue
+    if last_error:
+        raise last_error
+    raise AIProviderUnavailableError(f"All providers failed for task: {task_key}")
+
+
+async def _openai_compatible_request_stream(
+    provider: AIProvider,
+    model: AIModel,
+    messages: list[dict],
+    temperature: float,
+    max_tokens: int,
+):
+    api_key = _secret_value(provider.api_key_env)
+    if provider.api_key_env and not api_key:
+        raise AIConfigurationError(f"Secret {provider.api_key_env} is not configured")
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    payload = {
+        "model": model.external_id,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": min(max_tokens, model.max_output_tokens),
+        "stream": True,
+    }
+    verify = certifi.where() if provider.verify_ssl else False
+    retryable = {429, 500, 502, 503, 504}
+    started = time.perf_counter()
+    for attempt in range(provider.retry_count + 1):
+        try:
+            async with httpx.AsyncClient(timeout=provider.timeout_seconds, verify=verify) as client:
+                async with client.stream("POST", provider.base_url, json=payload, headers=headers) as response:
+                    if response.status_code in retryable and attempt < provider.retry_count:
+                        await asyncio.sleep((2 ** attempt) + random.random())
+                        continue
+                    response.raise_for_status()
+                    full_content = []
+                    usage_info = {}
+                    async for line in response.aiter_lines():
+                        if not line.startswith("data: "):
+                            continue
+                        raw = line[6:].strip()
+                        if raw == "[DONE]":
+                            break
+                        try:
+                            chunk = json.loads(raw)
+                            delta = chunk.get("choices", [{}])[0].get("delta", {})
+                            content = delta.get("content", "")
+                            if content:
+                                full_content.append(content)
+                                yield content, None
+                            if chunk.get("usage"):
+                                usage_info = chunk["usage"]
+                        except json.JSONDecodeError:
+                            continue
+                    latency_ms = int((time.perf_counter() - started) * 1000)
+                    yield "", {
+                        "content": "".join(full_content),
+                        "usage": usage_info,
+                        "latency_ms": latency_ms,
+                    }
+                    return
+        except httpx.TimeoutException:
+            if attempt < provider.retry_count:
+                await asyncio.sleep((2 ** attempt) + random.random())
+                continue
+            raise
+    raise AIProviderUnavailableError(f"Provider {provider.code} did not return a response")
+
+
+async def stream_call_ai(
+    db: AsyncSession,
+    task_key: str,
+    messages: list[dict],
+    temperature: float | None = None,
+    max_tokens: int | None = None,
+):
+    targets = await _load_targets(db, task_key)
+    if not targets:
+        raise AIConfigurationError(f"No enabled model target for task: {task_key}")
+    last_error: Exception | None = None
+    for _, model, provider in targets:
+        try:
+            approximate_input_tokens = sum(
+                max(1, len(str(message.get("content", ""))) // 4)
+                for message in messages
+            )
+            requested_output = min(
+                max_tokens if max_tokens is not None else settings.DEFAULT_MAX_TOKENS,
+                model.max_output_tokens,
+            )
+            if approximate_input_tokens + requested_output > model.context_window:
+                last_error = AIConfigurationError(
+                    f"Model {model.external_id} context window is too small for task {task_key}"
+                )
+                logger.warning(
+                    "Skipping AI route target with insufficient context task=%s model=%s",
+                    task_key, model.external_id,
+                )
+                continue
+            if provider.adapter_type not in {"openai_compatible", "groq", "ollama"}:
+                raise AIConfigurationError(f"Unsupported AI adapter: {provider.adapter_type}")
+
+            event_data = None
+            async for token, final_data in _openai_compatible_request_stream(
+                provider,
+                model,
+                messages,
+                temperature if temperature is not None else settings.DEFAULT_TEMPERATURE,
+                max_tokens if max_tokens is not None else settings.DEFAULT_MAX_TOKENS,
+            ):
+                if final_data is not None:
+                    event_data = final_data
+                else:
+                    yield token, None
+
+            if event_data:
+                usage = event_data.get("usage", {})
+                latency_ms = event_data.get("latency_ms", 0)
+                data_for_event = {
+                    "choices": [{"message": {"content": event_data.get("content", "")}}],
+                    "usage": usage,
+                    "id": "",
+                }
+                event = _event(task_key, provider, model, data_for_event, latency_ms)
+                yield "", {
+                    "content": event_data.get("content", ""),
+                    "usage": usage,
+                    "events": [event],
+                }
+            return
+
+        except AIConfigurationError:
+            raise
+        except httpx.HTTPStatusError as error:
+            if error.response.status_code not in {429, 500, 502, 503, 504}:
+                raise AIConfigurationError(
+                    f"Provider {provider.code} rejected the configured request"
+                ) from error
+            last_error = error
+            logger.warning(
+                "AI route target failed task=%s provider=%s model=%s status=%s",
+                task_key, provider.code, model.external_id, error.response.status_code,
+            )
+            continue
+        except (httpx.TimeoutException, httpx.ConnectError, AIProviderUnavailableError, KeyError, ValueError) as error:
             last_error = error
             logger.warning(
                 "AI route target failed task=%s provider=%s model=%s error=%s",

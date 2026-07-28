@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { AnimatePresence } from 'framer-motion'
-import { Send } from 'lucide-react'
+import { Send, Square } from 'lucide-react'
 import ChatMessage from '../components/ui/ChatMessage'
 import TypingIndicator from '../components/ui/TypingIndicator'
 import EmptyState from '../components/ui/EmptyState'
@@ -15,7 +15,7 @@ export default function Chat() {
   const inputRef = useRef(null)
   const prevMsgLen = useRef(0)
 
-  const { messages, streaming, send, retry, isLoadingHistory } = useChat(
+  const { messages, streaming, send, abort, retry, isLoadingHistory } = useChat(
     conversationId || null,
     (newId) => navigate(`/app/chat/${newId}`, { replace: true })
   )
@@ -64,12 +64,11 @@ export default function Chat() {
         ) : (
           <AnimatePresence>
             {messages.map((msg) => (
-              <ChatMessage key={msg.id + '-' + (msg.content || '').slice(0, 20)} message={msg} onRetry={retry} />
+              <ChatMessage key={msg.id} message={msg} onRetry={retry} streaming={streaming} />
             ))}
           </AnimatePresence>
         )}
 
-        {streaming && <TypingIndicator />}
         <div ref={messagesEndRef} />
       </div>
 
@@ -85,13 +84,23 @@ export default function Chat() {
             className="input flex-1"
             disabled={streaming}
           />
-          <button
-            onClick={handleSend}
-            disabled={!input.trim() || streaming}
-            className="btn-primary px-4"
-          >
-            <Send className="w-4 h-4" />
-          </button>
+          {streaming ? (
+            <button
+              onClick={abort}
+              className="btn-danger px-4"
+              title="Stop generating"
+            >
+              <Square className="w-4 h-4" />
+            </button>
+          ) : (
+            <button
+              onClick={handleSend}
+              disabled={!input.trim()}
+              className="btn-primary px-4"
+            >
+              <Send className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
     </div>

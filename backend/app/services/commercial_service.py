@@ -2,7 +2,7 @@ import json
 import uuid
 from datetime import date, datetime, timedelta, timezone
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -125,21 +125,60 @@ async def seed_commercial_defaults(db: AsyncSession) -> None:
             await db.flush()
         models[external_id] = model
 
-    route_models = {
-        "intent_detection": [models["llama-3.1-8b-instant"]],
-        "general_chat": [models["llama-3.3-70b-versatile"], models["llama-3.1-8b-instant"]],
-        "sql_generation": [models["llama-3.3-70b-versatile"]],
-        "database_formatting": [models["llama-3.3-70b-versatile"], models["llama-3.1-8b-instant"]],
-        "database_notice": [models["llama-3.1-8b-instant"], models["llama-3.3-70b-versatile"]],
-    }
-    for task_key, target_models in route_models.items():
+    ollama_provider = (await db.execute(select(AIProvider).where(AIProvider.code == "ollama"))).scalar_one_or_none()
+    if not ollama_provider:
+        ollama_provider = AIProvider(
+            code="ollama",
+            name="Ollama (Local)",
+            adapter_type="openai_compatible",
+            base_url="http://localhost:11434/v1/chat/completions",
+            api_key_env="",
+            enabled=True,
+            verify_ssl=False,
+            timeout_seconds=120,
+            retry_count=2,
+        )
+        db.add(ollama_provider)
+        await db.flush()
+
+    ollama_model = (await db.execute(
+        select(AIModel).where(
+            AIModel.provider_id == ollama_provider.id,
+            AIModel.external_id == "qwen2.5:7b",
+        )
+    )).scalar_one_or_none()
+    if not ollama_model:
+        ollama_model = AIModel(
+            provider_id=ollama_provider.id,
+            external_id="qwen2.5:7b",
+            display_name="Qwen 2.5 7B",
+            context_window=32768,
+            max_output_tokens=8192,
+            supports_json=True,
+            input_cost_paise_per_million=0,
+            output_cost_paise_per_million=0,
+            enabled=True,
+        )
+        db.add(ollama_model)
+        await db.flush()
+
+    active_model = ollama_model if settings.LLM_PROVIDER == "ollama" else models["llama-3.3-70b-versatile"]
+
+    TASK_KEYS = [
+        "intent_detection", "general_chat", "sql_generation",
+        "database_formatting", "database_notice",
+    ]
+    existing_routes = (await db.execute(select(AITaskRoute))).scalars().all()
+    for route in existing_routes:
+        await db.execute(delete(AITaskTarget).where(AITaskTarget.route_id == route.id))
+
+    for task_key in TASK_KEYS:
         route = (await db.execute(select(AITaskRoute).where(AITaskRoute.task_key == task_key))).scalar_one_or_none()
         if not route:
             route = AITaskRoute(task_key=task_key, enabled=True)
             db.add(route)
             await db.flush()
-            for priority, model in enumerate(target_models, 1):
-                db.add(AITaskTarget(route_id=route.id, model_id=model.id, priority=priority, enabled=True))
+        db.add(AITaskTarget(route_id=route.id, model_id=active_model.id, priority=1, enabled=True))
 
     plans = [
         dict(code="FREE", name="Free", description="Explore the AI matchmaker", price_paise=0, duration_days=30, ai_credits=50, daily_message_limit=10, contact_limit=0),

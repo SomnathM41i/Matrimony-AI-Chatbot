@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.dependencies import get_db, get_authenticated_user
@@ -55,3 +56,31 @@ async def send_message(
             status_code=500,
             detail="Sorry, the request could not be processed right now.",
         )
+
+
+@router.post("/stream")
+@limiter.limit("30/minute")
+async def send_message_stream(
+    request: Request,
+    body: ChatRequest,
+    user: User = Depends(get_authenticated_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if not body.message.strip():
+        raise HTTPException(status_code=400, detail="Message cannot be empty")
+    if len(body.message) > settings.MAX_MESSAGE_LENGTH:
+        raise HTTPException(status_code=400, detail="Message too long")
+    service = ChatService(db)
+    return StreamingResponse(
+        service.stream_process_message(
+            user_id=user.id,
+            message=body.message.strip(),
+            conversation_id=body.conversation_id,
+        ),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )

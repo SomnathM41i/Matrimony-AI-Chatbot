@@ -1,4 +1,4 @@
-from sqlalchemy import text
+from sqlalchemy import text, make_url
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.pool import NullPool
@@ -8,10 +8,16 @@ import os
 
 os.makedirs("storage", exist_ok=True)
 
+_db_url = make_url(settings.DATABASE_URL)
+if _db_url.drivername.startswith("sqlite"):
+    _db_url = _db_url.set(query={
+        "pragma": ("journal_mode(WAL)", "busy_timeout(5000)"),
+        "check_same_thread": "False",
+    })
+
 engine = create_async_engine(
-    settings.DATABASE_URL,
+    _db_url,
     echo=settings.is_production is False,
-    connect_args={"check_same_thread": False} if "sqlite" in settings.DATABASE_URL else {},
     poolclass=NullPool,
 )
 

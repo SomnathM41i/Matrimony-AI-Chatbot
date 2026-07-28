@@ -97,6 +97,10 @@ async def health():
         "status": "ok" if db_ok else "degraded",
         "database": "connected" if db_ok else "unreachable",
         "version": "2.0.0",
+        "llm": {
+            "provider": settings.LLM_PROVIDER,
+            "model": "qwen2.5:7b" if settings.LLM_PROVIDER == "ollama" else "llama-3.3-70b-versatile",
+        },
     }
 
 

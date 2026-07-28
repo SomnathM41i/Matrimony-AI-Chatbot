@@ -5,7 +5,7 @@ import httpx
 
 from app.services.chat_service import user_facing_error
 from app.ai.llm_client import call_llm
-from app.core.prompts import BASE_SYSTEM_PROMPT
+from backend.app.core.old_prompts import BASE_SYSTEM_PROMPT
 from app.services.db_query_service import DatabaseQueryError, _sync_safe_query, validate_select_sql
 
 

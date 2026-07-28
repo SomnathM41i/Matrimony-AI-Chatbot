@@ -75,20 +75,46 @@ function splitContent(content) {
   return parts.length > 0 ? parts : [{ type: 'text', content }]
 }
 
-export default function ChatMessage({ message, onRetry }) {
+function LoadingDots() {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-xs text-primary-400/70 font-medium">Thinking</span>
+      <div className="flex gap-1">
+        <motion.span
+          className="w-1.5 h-1.5 bg-primary-400 rounded-full"
+          animate={{ scale: [0.6, 1.2, 0.6], opacity: [0.4, 1, 0.4] }}
+          transition={{ duration: 1.4, repeat: Infinity, delay: 0, ease: 'easeInOut' }}
+        />
+        <motion.span
+          className="w-1.5 h-1.5 bg-primary-400 rounded-full"
+          animate={{ scale: [0.6, 1.2, 0.6], opacity: [0.4, 1, 0.4] }}
+          transition={{ duration: 1.4, repeat: Infinity, delay: 0.2, ease: 'easeInOut' }}
+        />
+        <motion.span
+          className="w-1.5 h-1.5 bg-primary-400 rounded-full"
+          animate={{ scale: [0.6, 1.2, 0.6], opacity: [0.4, 1, 0.4] }}
+          transition={{ duration: 1.4, repeat: Infinity, delay: 0.4, ease: 'easeInOut' }}
+        />
+      </div>
+    </div>
+  )
+}
+
+export default function ChatMessage({ message, onRetry, streaming }) {
   const isUser = message.role === 'user'
   const content = typeof message.content === 'string'
     ? message.content
     : message.content?.message || ''
+  const isStreaming = streaming && !isUser && !content
   const isError = message.isError || content.startsWith("Sorry, I couldn't process")
     || content.startsWith('Sorry, the assistant is receiving')
     || content.startsWith('Sorry, the request took too long')
     || content.startsWith("Sorry, I couldn't understand")
 
   const parts = useMemo(() => {
-    if (isUser) return null
+    if (isUser || isStreaming) return null
     return splitContent(content)
-  }, [content, isUser])
+  }, [content, isUser, isStreaming])
 
   const hasCards = useMemo(() => parts?.some(p => p.type === 'card'), [parts])
 
@@ -113,10 +139,14 @@ export default function ChatMessage({ message, onRetry }) {
             ? 'bg-primary-600/20 text-primary-100 border border-primary-600/30'
             : isError
             ? 'bg-red-900/20 text-red-300 border border-red-800/30'
+            : isStreaming
+            ? 'bg-surface-800/40 text-surface-300 border border-surface-700/30'
             : 'bg-surface-800/80 text-surface-200 border border-surface-700/50'
         }`}
       >
-        {!hasCards ? (
+        {isStreaming ? (
+          <LoadingDots />
+        ) : !hasCards ? (
           <>
             <p className="text-sm leading-relaxed whitespace-pre-wrap">{content}</p>
             {isError && onRetry && (

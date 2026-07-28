@@ -139,14 +139,14 @@ def search_with_filters(
 
     query_filter = models.Filter(must=must_conditions) if must_conditions else None
 
-    results = client.search(
+    results = client.query_points(
         collection_name=COLLECTION_NAME,
-        query_vector=query_vector,
+        query=query_vector,
         query_filter=query_filter,
         limit=limit,
     )
 
-    return [r.payload for r in results if r.score >= 0.5]
+    return [r.payload for r in results.points if r.score >= 0.5]
 
 
 def delete_collection(host: str = "localhost", port: int = 6333):

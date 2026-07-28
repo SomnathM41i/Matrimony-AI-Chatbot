@@ -3,13 +3,14 @@ from app.config import settings
 from app.repositories.conversation_repository import ConversationRepository
 from app.repositories.chat_repository import ChatRepository
 from app.services.llm_service import get_general_response
-from app.services.db_query_service import answer_database_question_hybrid, DatabaseQueryError
+from app.services.db_query_service import answer_database_question_hybrid, DatabaseQueryError, accumulate_usage
 from app.core.logger import logger
 from datetime import datetime, timezone
 import httpx
 import json
 import uuid
 from app.services.commercial_service import (
+    CommercialLimitError,
     finalize_usage,
     record_usage_events,
     reserve_usage,
@@ -18,6 +19,8 @@ from app.services.commercial_service import (
 
 def user_facing_error(error: Exception) -> str:
     """Map internal/provider failures to safe, actionable chat messages."""
+    if isinstance(error, CommercialLimitError):
+        return str(error)
     if isinstance(error, httpx.HTTPStatusError) and error.response.status_code == 429:
         return (
             "Sorry, the assistant is receiving many requests right now. "
@@ -129,6 +132,227 @@ class ChatService:
         for m in msgs[-settings.CHAT_HISTORY_LIMIT:]:
             history.append({"role": m.role, "content": m.content})
         return history, {"accumulated_filters": accumulated_filters, "selected_profile": selected_profile}
+
+    async def stream_process_message(
+        self, user_id: int, message: str, conversation_id: int | None = None
+    ):
+        greeting_reply = _is_greeting_only(message)
+        if greeting_reply and not conversation_id:
+            n = settings.CHAT_TITLE_TRUNCATION
+            title = message[:n] + ("..." if len(message) > n else "")
+            conv = await self.conv_repo.create(user_id=user_id, title=title)
+            _ = await self.msg_repo.create(
+                conversation_id=conv.id, user_id=user_id,
+                role="user", content=message,
+            )
+            assistant_msg = await self.msg_repo.create(
+                conversation_id=conv.id, user_id=user_id,
+                role="assistant", content=greeting_reply,
+            )
+            await self.conv_repo.update(conv, updated_at=datetime.now(timezone.utc))
+            await self.db.commit()
+            yield f"data: {json.dumps({'type': 'token', 'content': greeting_reply})}\n\n"
+            yield f"data: {json.dumps({'type': 'done', 'conversation_id': conv.id, 'message_id': assistant_msg.id, 'usage': {'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0}})}\n\n"
+            return
+
+        request_id = uuid.uuid4().hex
+        if conversation_id:
+            conv = await self.conv_repo.get_by_id(conversation_id)
+            if not conv or conv.user_id != user_id:
+                raise ValueError("Conversation not found")
+        else:
+            n = settings.CHAT_TITLE_TRUNCATION
+            title = message[:n] + ("..." if len(message) > n else "")
+            conv = await self.conv_repo.create(user_id=user_id, title=title)
+
+        try:
+            reservation, subscription = await reserve_usage(self.db, user_id, request_id)
+        except CommercialLimitError as e:
+            await self.db.rollback()
+            yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
+            return
+
+        await self.db.commit()
+
+        history, conversation_context = await self._load_history(conv.id)
+
+        user_msg = await self.msg_repo.create(
+            conversation_id=conv.id,
+            user_id=user_id,
+            role="user",
+            content=message,
+        )
+        await self.db.commit()
+
+        usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        events = []
+        request_type = "normal"
+        credits_charged = 0
+        response_metadata = None
+        reply_text = ""
+        collected_tokens = []
+        finalized = False
+
+        try:
+            from app.services.extraction_service import extract_search_params
+            from app.services.query_builder import build_profile_query
+            from app.services.llm_service import stream_general_response, stream_format_db_result, format_db_notice
+            from app.services.db_query_service import execute_param_query, _handle_profile_search
+
+            extracted = await extract_search_params(message, history=history, db=self.db)
+            intent = extracted.get("intent", "general")
+
+            if intent in ("profile_search", "profile_detail"):
+                request_type = "database"
+                ctx = conversation_context or {}
+                accumulated_filters = ctx.get("accumulated_filters")
+                selected_profile = ctx.get("selected_profile")
+
+                if intent == "profile_detail":
+                    from app.services.query_builder import build_detail_query
+                    matri_id = selected_profile.get("MatriID") if selected_profile else None
+                    name = selected_profile.get("Name") if selected_profile else None
+                    if not matri_id and not name:
+                        reply_text = "Which profile would you like details about? Please select one first."
+                        yield f"data: {json.dumps({'type': 'token', 'content': reply_text})}\n\n"
+                    else:
+                        fields = extracted.get("fields")
+                        sql, params = build_detail_query(matri_id=matri_id, name=name, fields=fields, limit=extracted.get("limit", 1))
+                        sql_result = await execute_param_query(sql, params)
+                        if not sql_result.get("rows"):
+                            reply_text = "Profile not found."
+                            yield f"data: {json.dumps({'type': 'token', 'content': reply_text})}\n\n"
+                        else:
+                            from app.services.db_query_service import _add_photo_url
+                            for row in sql_result["rows"]:
+                                _add_photo_url(row)
+                            from app.services.db_query_service import _message_asks_about_unavailable_attribute
+                            if _message_asks_about_unavailable_attribute(message):
+                                notice = await format_db_notice(message, "This information is not available in the database.", history=history, db=self.db)
+                                reply_text = notice.get("content", "This information is not available in the database.")
+                                yield f"data: {json.dumps({'type': 'token', 'content': reply_text})}\n\n"
+                            else:
+                                async for token, final in stream_format_db_result(message, sql_result, history=history, db=self.db):
+                                    if token:
+                                        collected_tokens.append(token)
+                                        yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
+                                    if final:
+                                        usage = accumulate_usage(usage, final.get("usage", {}))
+                                        events.extend(final.get("events", []))
+                                        reply_text = final.get("content", "".join(collected_tokens))
+                            profile_rows = [{"MatriID": r.get("MatriID"), "Name": r.get("Name")} for r in sql_result["rows"] if r.get("Name")]
+                            response_metadata = {"selected_profile": profile_rows[0] if len(profile_rows) == 1 else None, "accumulated_filters": {}}
+                else:
+                    new_filters = extracted.get("filters", {})
+                    from app.services.db_query_service import _merge_filters
+                    filters = _merge_filters(accumulated_filters, new_filters)
+                    limit = extracted.get("limit", 10)
+                    sql, params = build_profile_query(filters, limit=limit)
+                    sql_result = await execute_param_query(sql, params)
+                    profile_rows = [{"MatriID": r.get("MatriID"), "Name": r.get("Name")} for r in sql_result["rows"] if r.get("Name")]
+                    response_metadata = {"profile_candidates": profile_rows, "accumulated_filters": filters}
+
+                    if sql_result["row_count"] == 0:
+                        try:
+                            from app.services.embedding_service import embed_text, build_profile_document
+                            from app.services.vector_service import search_with_filters, get_client
+                            get_client(host=settings.QDRANT_HOST, port=settings.QDRANT_PORT)
+                            query_text = build_profile_document(filters)
+                            query_vector = embed_text(f"query: {message}. {query_text}", model_name=settings.EMBEDDING_MODEL)
+                            vector_rows = search_with_filters(query_vector, filters=filters, limit=limit, host=settings.QDRANT_HOST, port=settings.QDRANT_PORT)
+                            if vector_rows:
+                                for row in vector_rows:
+                                    from app.services.db_query_service import _add_photo_url
+                                    _add_photo_url(row)
+                                vector_result = {"sql": "vector_search", "rows": vector_rows, "row_count": len(vector_rows)}
+                                profile_rows = [{"MatriID": r.get("MatriID"), "Name": r.get("Name")} for r in vector_rows if r.get("Name")]
+                                response_metadata = {"profile_candidates": profile_rows, "accumulated_filters": filters}
+                                async for token, final in stream_format_db_result(message, vector_result, history=history, db=self.db):
+                                    if token:
+                                        collected_tokens.append(token)
+                                        yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
+                                    if final:
+                                        usage = accumulate_usage(usage, final.get("usage", {}))
+                                        events.extend(final.get("events", []))
+                                        reply_text = final.get("content", "".join(collected_tokens))
+                            else:
+                                notice = await format_db_notice(message, "No matching profiles found. Suggest trying a different city, caste, or age range.", history, db, "No matching profiles found.")
+                                reply_text = notice.get("content", "No matching profiles found.")
+                                yield f"data: {json.dumps({'type': 'token', 'content': reply_text})}\n\n"
+                        except Exception as e:
+                            logger.warning(f"Vector search fallback failed: {e}")
+                            from app.services.db_query_service import _format_notice_safe
+                            msg = await _format_notice_safe(message, "No matching profiles found. Suggest trying a different city, caste, or age range.", history, self.db, "No matching profiles found.")
+                            reply_text = msg
+                            yield f"data: {json.dumps({'type': 'token', 'content': reply_text})}\n\n"
+                    elif sql_result["row_count"] > settings.MAX_ROWS_BEFORE_NARROW:
+                        from app.services.db_query_service import _format_notice_safe
+                        msg = await _format_notice_safe(message, f"The search found {sql_result['row_count']} results, too many to show. Ask the user to add more criteria.", history, self.db, f"The search found {sql_result['row_count']} results, too many to show at once. Please add more specific criteria.")
+                        reply_text = msg
+                        yield f"data: {json.dumps({'type': 'token', 'content': reply_text})}\n\n"
+                    else:
+                        async for token, final in stream_format_db_result(message, sql_result, history=history, db=self.db):
+                            if token:
+                                collected_tokens.append(token)
+                                yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
+                            if final:
+                                usage = accumulate_usage(usage, final.get("usage", {}))
+                                events.extend(final.get("events", []))
+                                reply_text = final.get("content", "".join(collected_tokens))
+            else:
+                request_type = "normal"
+                if _is_profile_query(message, history):
+                    try:
+                        notice = await format_db_notice(message, "No matching profiles found. Suggest trying a different city, caste, or age range.", history=history, db=self.db)
+                        reply_text = notice.get("content", "No matching profiles found.")
+                    except Exception:
+                        reply_text = "No matching profiles found."
+                    yield f"data: {json.dumps({'type': 'token', 'content': reply_text})}\n\n"
+                else:
+                    async for token, final in stream_general_response(message, history=history, db=self.db):
+                        if token:
+                            collected_tokens.append(token)
+                            yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
+                        if final:
+                            usage = accumulate_usage(usage, final.get("usage", {}))
+                            events.extend(final.get("events", []))
+                            reply_text = final.get("content", "".join(collected_tokens))
+
+            if not reply_text:
+                reply_text = "".join(collected_tokens) if collected_tokens else ""
+
+            credits_charged = await finalize_usage(self.db, request_id, request_type, True)
+            finalized = True
+            await record_usage_events(self.db, request_id=request_id, user_id=user_id, subscription_id=subscription.id, conversation_id=conv.id, request_type=request_type, events=events)
+            assistant_msg = await self.msg_repo.create(
+                conversation_id=conv.id, user_id=user_id, role="assistant",
+                content=reply_text,
+                metadata_json=json.dumps(response_metadata) if response_metadata else None,
+                prompt_tokens=usage["prompt_tokens"], completion_tokens=usage["completion_tokens"], total_tokens=usage["total_tokens"],
+            )
+            await self.conv_repo.update(conv, updated_at=datetime.now(timezone.utc))
+            await self.db.commit()
+            yield f"data: {json.dumps({'type': 'done', 'conversation_id': conv.id, 'message_id': assistant_msg.id, 'usage': usage})}\n\n"
+
+        except Exception as e:
+            logger.exception("Chat streaming error")
+            try:
+                await self.db.rollback()
+            except Exception:
+                pass
+            reply_text = user_facing_error(e)
+            try:
+                await finalize_usage(self.db, request_id, request_type, False)
+                finalized = True
+            except Exception:
+                pass
+            yield f"data: {json.dumps({'type': 'error', 'content': reply_text})}\n\n"
+        finally:
+            if not finalized:
+                try:
+                    await finalize_usage(self.db, request_id, request_type, False)
+                except Exception:
+                    pass
 
     async def process_message(
         self, user_id: int, message: str, conversation_id: int | None = None

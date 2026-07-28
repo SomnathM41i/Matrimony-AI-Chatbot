@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  MessageSquare, History, Plus, LogOut, Trash2, Menu, X, Database, Wifi, WifiOff, Brain, Shield, Crown,
+  MessageSquare, History, Plus, LogOut, Trash2, Menu, X, Database, Wifi, WifiOff, Brain, Shield, Crown, Cpu,
 } from 'lucide-react'
 import { useHistory } from '../../hooks/useHistory'
 import { useAuth } from '../../hooks/useAuth'
@@ -17,7 +17,7 @@ export default function Sidebar() {
   const location = useLocation()
   const { conversations, deleteConversation } = useHistory()
   const { user, logout } = useAuth()
-  const { dbConnected, loading } = useDatabaseStatus()
+  const { dbConnected, llm, loading } = useDatabaseStatus()
   const { data: subscription } = useQuery({ queryKey: ['commercial-me'], queryFn: getSubscription, retry: false })
 
   const currentConvId = location.pathname.match(/\/app\/chat\/([^/]+)/)?.[1]
@@ -161,6 +161,15 @@ export default function Sidebar() {
             <span className="text-xs text-surface-500">Tokens used</span>
             <span className="ml-auto text-xs font-mono text-primary-400 tabular-nums">
               {user.total_tokens.toLocaleString()}
+            </span>
+          </div>
+        )}
+        {llm && (
+          <div className="flex items-center gap-2">
+            <Cpu className="w-3.5 h-3.5 text-primary-400" />
+            <span className="text-xs text-surface-500 capitalize">{llm.provider}</span>
+            <span className="ml-auto text-xs font-mono text-surface-400 truncate max-w-[120px] text-right">
+              {llm.model}
             </span>
           </div>
         )}

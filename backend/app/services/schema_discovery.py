@@ -147,9 +147,29 @@ def get_all_occupations() -> list[str]:
     return occ
 
 
+REGISTER_COLUMN_CATEGORIES = {
+    "Identity & Basic": ["MatriID", "Name", "Gender", "Age", "DOB", "Maritalstatus"],
+    "Religion & Caste": ["Religion", "Caste", "Subcaste", "Gothram", "Manglik", "Star", "Moonsign"],
+    "Contact & Location": ["Mobile", "Email", "Phone", "City", "Dist", "State", "Country", "Residencystatus", "Nationality"],
+    "Education & Career": ["Education", "EducationDetails", "Occupation", "Employedin", "Annualincome"],
+    "Physical Attributes": ["Height", "Weight", "BloodGroup", "Bodytype", "Complexion"],
+    "Lifestyle": ["Diet", "Smoke", "Drink", "Language", "Hobbies", "Interests"],
+    "Family": ["Fathername", "Mothersname", "Fathersoccupation", "Mothersoccupation", "noofbrothers", "noofsisters", "Familyvalues", "FamilyType", "FamilyStatus"],
+    "Horoscope": ["Birthplace", "Birthtime", "Nakshatra", "Charan", "Rasi", "Gan", "Nadi"],
+    "Photos & System": ["Photo1", "Photo2", "Photo3", "Photo4", "Photo5", "Status", "Regdate", "RegEmail", "Username"],
+    "About": ["AboutMyself", "PartnerExpectations"],
+}
+
+
 def build_schema_context() -> str:
     schema = get_schema()
-    lines = ["Database Schema:", ""]
+    lines = ["## Database Schema (register table — member profiles) ##", ""]
+
+    for category, cols in REGISTER_COLUMN_CATEGORIES.items():
+        existing = [c for c in cols if any(tc["name"] == c for tc in schema.get("tables", {}).get("register", []))]
+        if existing:
+            lines.append(f"  {category}: {', '.join(existing)}")
+
     for table, cols in schema.get("tables", {}).items():
         if table in ("ignore", "register") or len(cols) > 30:
             continue
@@ -157,16 +177,34 @@ def build_schema_context() -> str:
         lines.append(f"  {table}: {', '.join(col_names)}")
 
     lines.append("")
-    lines.append("Castes: " + ", ".join(get_all_castes()[:30]))
+    lines.append("## Valid DISTINCT values for key columns ##")
+    lines.append("")
+    lines.append("Castes: " + ", ".join(get_all_castes()[:50]))
     lines.append("Religions: " + ", ".join(get_all_religions()))
     cities = get_all_cities()
     if cities:
-        lines.append("Cities: " + ", ".join(cities))
+        lines.append("Cities: " + ", ".join(cities[:40]))
     edu = get_all_educations()
     if edu:
-        lines.append("Education: " + ", ".join(edu[:20]))
+        lines.append("Education: " + ", ".join(edu[:25]))
     occ = get_all_occupations()
     if occ:
-        lines.append("Occupation: " + ", ".join(occ[:20]))
+        lines.append("Occupation: " + ", ".join(occ[:25]))
+    diet = get_distinct_values("Diet")
+    if diet:
+        lines.append("Diet values: " + ", ".join(diet))
+    manglik = get_distinct_values("Manglik")
+    if manglik:
+        lines.append("Manglik values: " + ", ".join(manglik))
+    marital = get_distinct_values("Maritalstatus")
+    if marital:
+        lines.append("Marital Status values: " + ", ".join(marital))
 
     return "\n".join(lines)
+
+
+def get_register_column_names() -> list[str]:
+    all_cols = []
+    for cols in REGISTER_COLUMN_CATEGORIES.values():
+        all_cols.extend(cols)
+    return all_cols

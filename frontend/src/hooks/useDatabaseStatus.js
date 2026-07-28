@@ -3,14 +3,17 @@ import { getHealth } from '../services/healthService'
 
 export function useDatabaseStatus() {
   const [dbConnected, setDbConnected] = useState(null)
+  const [llm, setLlm] = useState(null)
   const [loading, setLoading] = useState(true)
 
   const check = useCallback(async () => {
     try {
       const data = await getHealth()
       setDbConnected(data.database === 'connected')
+      setLlm(data.llm || null)
     } catch {
       setDbConnected(false)
+      setLlm(null)
     } finally {
       setLoading(false)
     }
@@ -22,5 +25,5 @@ export function useDatabaseStatus() {
     return () => clearInterval(interval)
   }, [check])
 
-  return { dbConnected, loading }
+  return { dbConnected, llm, loading }
 }

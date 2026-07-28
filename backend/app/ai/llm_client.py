@@ -89,6 +89,104 @@ async def call_groq(
     raise RuntimeError("Groq request failed after retries")
 
 
+async def stream_groq(
+    messages: list[dict],
+    model: str | None = None,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
+):
+    if not settings.GROQ_API_KEY:
+        raise RuntimeError("GROQ_API_KEY not configured")
+
+    _temperature = temperature if temperature is not None else settings.DEFAULT_TEMPERATURE
+    _max_tokens = max_tokens if max_tokens is not None else settings.DEFAULT_MAX_TOKENS
+    _max_retries = settings.LLM_MAX_RETRIES
+    _base_delay = settings.LLM_BASE_DELAY
+    _retryable = settings.retryable_statuses_set
+    verify = certifi.where() if settings.GROQ_VERIFY_SSL else False
+
+    for attempt in range(_max_retries + 1):
+        try:
+            async with httpx.AsyncClient(timeout=settings.LLM_TIMEOUT, verify=verify) as client:
+                async with client.stream(
+                    "POST",
+                    settings.GROQ_API_URL,
+                    json={
+                        "model": model or settings.GROQ_MODEL,
+                        "messages": messages,
+                        "temperature": _temperature,
+                        "max_tokens": _max_tokens,
+                        "stream": True,
+                    },
+                    headers={
+                        "Authorization": f"Bearer {settings.GROQ_API_KEY}",
+                        "Content-Type": "application/json",
+                    },
+                ) as resp:
+                    if resp.status_code == 413:
+                        raise GroqPayloadTooLargeError(
+                            "Payload too large for Groq API. Try narrowing your search criteria."
+                        )
+
+                    if resp.status_code == 429 and attempt < _max_retries:
+                        delay = _base_delay * (2 ** attempt) + random.random()
+                        logger.warning(
+                            f"Groq 429 rate limited (attempt {attempt + 1}), "
+                            f"retrying in {delay:.1f}s..."
+                        )
+                        await asyncio.sleep(delay)
+                        continue
+
+                    resp.raise_for_status()
+
+                    full_content = []
+                    usage_info = {}
+                    async for line in resp.aiter_lines():
+                        if not line.startswith("data: "):
+                            continue
+                        payload = line[6:].strip()
+                        if payload == "[DONE]":
+                            break
+                        try:
+                            chunk = json.loads(payload)
+                            delta = chunk.get("choices", [{}])[0].get("delta", {})
+                            content = delta.get("content", "")
+                            if content:
+                                full_content.append(content)
+                                yield content, None
+                            if chunk.get("usage"):
+                                usage_info = chunk["usage"]
+                        except json.JSONDecodeError:
+                            continue
+
+                    yield "", {"content": "".join(full_content), "usage": usage_info}
+                    return
+
+        except httpx.TimeoutException:
+            if attempt < _max_retries:
+                delay = _base_delay * (2 ** attempt) + random.random()
+                logger.warning(
+                    f"Groq timeout (attempt {attempt + 1}), "
+                    f"retrying in {delay:.1f}s..."
+                )
+                await asyncio.sleep(delay)
+                continue
+            raise
+
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code in _retryable and attempt < _max_retries:
+                delay = _base_delay * (2 ** attempt) + random.random()
+                logger.warning(
+                    f"Groq {e.response.status_code} (attempt {attempt + 1}), "
+                    f"retrying in {delay:.1f}s..."
+                )
+                await asyncio.sleep(delay)
+                continue
+            raise
+
+    raise RuntimeError("Groq request failed after retries")
+
+
 async def call_llm(
     system_prompt: str,
     user_message: str,

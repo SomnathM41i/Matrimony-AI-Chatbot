@@ -90,6 +90,12 @@ _UNKNOWN_PERSONAL_ATTRIBUTES = [
     "what food does she like", "what food does he like",
     "kay khate", "kay khato", "aavadta", "आवडता",
     "जेवण", "खाणे", "खाते",
+    "veg", "nonveg", "non veg", "शाकाहारी", "मांसाहारी",
+    "chapati", "roti", "भात", "दाल", "सब्जी",
+    "father", "mother", "brother", "sister", "वडील", "आई", "भाऊ", "बहीण",
+    "kay karatat", "kay karte", "व्यवसाय", "नोकरी", "कंपनी",
+    "company", "business", "व्यवसायिक",
+    "education", "शिक्षण", "college", "school", "university", "विद्यापीठ",
 ]
 
 _KNOWN_PERSONAL_COLUMNS = {
