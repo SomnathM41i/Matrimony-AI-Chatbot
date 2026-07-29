@@ -13,7 +13,7 @@ export default function EmptyState() {
         myvivahai — Matrimony AI Assistant
       </h2>
       <p className="text-surface-400 text-sm max-w-md leading-relaxed">
-        Ask me anything about members, pricing plans, success stories, or general
+        Ask me anything about members, success stories, or general
         matrimony questions. I can query the database and provide real-time answers.
       </p>
 
@@ -41,7 +41,7 @@ export default function EmptyState() {
       <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-md">
         {[
           'Show me 5 female profiles in Pune',
-          'What are your membership plans?',
+          'Show active male profiles in Mumbai',
           'Tell me about refund policy',
           'Show success stories',
         ].map((text) => (

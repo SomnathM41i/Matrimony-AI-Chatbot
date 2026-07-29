@@ -104,7 +104,7 @@ export default function Landing() {
             transition={{ duration: 0.6, delay: 0.2 }}
             className="text-lg sm:text-xl text-surface-400 max-w-2xl mx-auto mb-10 leading-relaxed"
           >
-            Instantly search member profiles, browse membership plans, explore success stories,
+            Instantly search member profiles, explore success stories,
             and get answers — all through natural conversation with AI.
           </motion.p>
 
@@ -170,7 +170,7 @@ export default function Landing() {
               Everything You Need
             </h2>
             <p className="text-surface-400 text-lg max-w-xl mx-auto">
-              Powerful tools to find matches, manage memberships, and grow your matrimony platform.
+              Powerful tools to find matches and grow your matrimony platform.
             </p>
           </motion.div>
 
@@ -184,7 +184,7 @@ export default function Landing() {
               {
                 icon: Bot,
                 title: 'AI Conversations',
-                description: 'Chat naturally with AI to find matches, explore plans, and get instant answers to any question.',
+                description: 'Chat naturally with AI to find matches and get instant answers to any question.',
               },
               {
                 icon: Database,
@@ -265,7 +265,7 @@ export default function Landing() {
               {
                 step: '01',
                 title: 'Ask Naturally',
-                description: 'Type your question in plain English — "Show me female profiles in Pune" or "Tell me about membership plans".',
+                description: 'Type your question in plain English — "Show me female profiles in Pune" or "Show me success stories".',
                 icon: MessageSquare,
               },
               {
@@ -317,7 +317,7 @@ export default function Landing() {
           <motion.div {...stagger} className="grid sm:grid-cols-2 gap-4 max-w-2xl mx-auto">
             {[
               { q: 'Show me 5 female profiles in Pune', icon: Users },
-              { q: 'What are your membership plans?', icon: BarChart3 },
+              { q: 'Show me active male profiles in Mumbai', icon: BarChart3 },
               { q: 'Tell me about the refund policy', icon: Shield },
               { q: 'Show me success stories', icon: Heart },
               { q: 'List active male members in Mumbai', icon: Search },

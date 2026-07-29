@@ -157,7 +157,6 @@ REGISTER_COLUMN_CATEGORIES = {
     "Family": ["Fathername", "Mothersname", "Fathersoccupation", "Mothersoccupation", "noofbrothers", "noofsisters", "Familyvalues", "FamilyType", "FamilyStatus"],
     "Horoscope": ["Birthplace", "Birthtime", "Nakshatra", "Charan", "Rasi", "Gan", "Nadi"],
     "Photos & System": ["Photo1", "Photo2", "Photo3", "Photo4", "Photo5", "Status", "Regdate", "RegEmail", "Username"],
-    "About": ["AboutMyself", "PartnerExpectations"],
 }
 
 

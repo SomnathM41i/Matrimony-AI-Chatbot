@@ -15,7 +15,7 @@ export default function Chat() {
   const inputRef = useRef(null)
   const prevMsgLen = useRef(0)
 
-  const { messages, streaming, send, abort, retry, isLoadingHistory } = useChat(
+  const { messages, streaming, currentSteps, send, abort, retry, isLoadingHistory } = useChat(
     conversationId || null,
     (newId) => navigate(`/app/chat/${newId}`, { replace: true })
   )
@@ -64,7 +64,7 @@ export default function Chat() {
         ) : (
           <AnimatePresence>
             {messages.map((msg) => (
-              <ChatMessage key={msg.id} message={msg} onRetry={retry} streaming={streaming} />
+              <ChatMessage key={msg.id} message={msg} onRetry={retry} streaming={streaming} currentSteps={currentSteps} />
             ))}
           </AnimatePresence>
         )}
@@ -80,7 +80,7 @@ export default function Chat() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask about members, plans, or anything..."
+            placeholder="Ask about members, profiles, or anything..."
             className="input flex-1"
             disabled={streaming}
           />

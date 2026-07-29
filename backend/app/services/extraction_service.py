@@ -101,10 +101,13 @@ def validate_fields(fields: list | None) -> list[str] | None:
     return [f.lower() for f in valid] if valid else None
 
 
+def _word_in(text: str, word: str) -> bool:
+    return bool(re.search(r'(?<!\w)' + re.escape(word) + r'(?!\w)', text))
+
 def is_likely_profile_message(message: str) -> bool:
     msg = message.lower()
-    has_profile = any(kw in msg for kw in PROFILE_KEYWORDS)
-    has_community = any(kw in msg for kw in (
+    has_profile = any(_word_in(msg, kw) for kw in PROFILE_KEYWORDS)
+    has_community = any(_word_in(msg, kw) for kw in (
         "maratha", "brahmin", "mali", "kunbi", "dhangar",
         "hindu", "muslim", "buddhist", "jain", "christian", "sikh",
         "मराठा", "ब्राह्मण", "माळी", "हिंदू",
@@ -112,13 +115,13 @@ def is_likely_profile_message(message: str) -> bool:
         "kuli", "कुळी",
     ))
     has_search_verb = any(
-        w in msg for w in [
+        _word_in(msg, w) for w in [
             "show", "search", "find", "list", "need", "want", "looking",
             "दाखवा", "शोधा", "हवी", "हवे", "पाहिजे",
             "dikhao", "dikha", "dikhaye", "dikhao", "बताओ", "ढूंढो",
         ]
     )
-    has_detail = any(kw in msg for kw in DETAIL_KEYWORDS)
+    has_detail = any(_word_in(msg, kw) for kw in DETAIL_KEYWORDS)
     return has_profile or has_community or has_search_verb or has_detail
 
 
@@ -127,7 +130,7 @@ def _is_detail_query(message: str) -> bool:
     detail_indicators = 0
 
     for kw in DETAIL_KEYWORDS:
-        if kw in msg:
+        if _word_in(msg, kw):
             detail_indicators += 1
 
     if msg.strip() in ("her", "his", "she", "him", "her profile", "his profile"):

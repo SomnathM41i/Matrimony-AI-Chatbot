@@ -13,12 +13,10 @@ const Login = lazy(() => import('../pages/Login'))
 const Landing = lazy(() => import('../pages/Landing'))
 const Chat = lazy(() => import('../pages/Chat'))
 const History = lazy(() => import('../pages/History'))
-const Plans = lazy(() => import('../pages/Plans'))
 const AdminDashboard = lazy(() => import('../pages/admin/Dashboard'))
 const AdminUsers = lazy(() => import('../pages/admin/Users'))
 const AdminProfiles = lazy(() => import('../pages/admin/Profiles'))
 const AdminConversations = lazy(() => import('../pages/admin/Conversations'))
-const CommercialAI = lazy(() => import('../pages/admin/CommercialAI'))
 
 function loadPage(element) {
   return <Suspense fallback={<div className="min-h-[12rem] flex items-center justify-center text-surface-400">Loading…</div>}>{element}</Suspense>
@@ -81,7 +79,6 @@ export const router = createBrowserRouter([
           { path: 'chat', element: loadPage(<Chat />) },
           { path: 'chat/:conversationId', element: loadPage(<Chat />) },
           { path: 'history', element: loadPage(<History />) },
-          { path: 'plans', element: loadPage(<Plans />) },
         ],
       },
       {
@@ -92,7 +89,6 @@ export const router = createBrowserRouter([
           { path: 'users', element: loadPage(<AdminUsers />) },
           { path: 'profiles', element: loadPage(<AdminProfiles />) },
           { path: 'conversations', element: loadPage(<AdminConversations />) },
-          { path: 'commercial-ai', element: loadPage(<CommercialAI />) },
         ],
       },
     ],

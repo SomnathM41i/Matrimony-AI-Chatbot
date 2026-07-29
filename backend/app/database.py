@@ -17,7 +17,7 @@ if _db_url.drivername.startswith("sqlite"):
 
 engine = create_async_engine(
     _db_url,
-    echo=settings.is_production is False,
+    echo=False,
     poolclass=NullPool,
 )
 

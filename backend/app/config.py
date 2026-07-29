@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     GROQ_MODEL: str = "llama-3.3-70b-versatile"
     GROQ_VERIFY_SSL: bool = True
 
-    LLM_PROVIDER: str = "ollama"   # "ollama" or "groq"
+    LLM_PROVIDER: str = "groq"   # "ollama" or "groq"
 
     DEFAULT_TEMPERATURE: float = 0.5
     DEFAULT_MAX_TOKENS: int = 1200
@@ -77,7 +77,7 @@ class Settings(BaseSettings):
     DB_SSL_CA: str = ""
     DB_POOL_SIZE: int = 5
 
-    ALLOWED_SQL_TABLES: str = "register,membershipplan,siteconfig,cms,successstory,testimonial,agents,agent_commissions,agent_customers,agent_plan_assignments,agent_sales,agent_withdrawal_requests"
+    ALLOWED_SQL_TABLES: str = "register,siteconfig,cms,successstory,testimonial,agents,agent_commissions,agent_customers,agent_plan_assignments,agent_sales,agent_withdrawal_requests"
 
     PHOTO_BASE_URL: str = "https://weddingsparampara.com/photo/"
 

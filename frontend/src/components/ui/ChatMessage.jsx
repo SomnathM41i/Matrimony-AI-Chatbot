@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { fadeIn } from '../../utils/animations'
 import { Bot, User, CameraOff } from 'lucide-react'
+import ThinkingIndicator from './ThinkingIndicator'
 
 function ProfileCard({ src, alt, details }) {
   const [imgError, setImgError] = useState(false)
@@ -54,53 +55,46 @@ function ProfileCardSimple({ src, alt }) {
 
 function splitContent(content) {
   const parts = []
-  const pattern = /(?:^|\n)\s*(?:\d+[\.\)]\s*)?(!\[([^\]]*)\]\(([^)]+)\))\s*([^\n]*)/g
-  let lastIndex = 0
-  let match
+  const cardInfo = []
 
-  while ((match = pattern.exec(content)) !== null) {
-    if (match.index > lastIndex) {
-      const between = content.slice(lastIndex, match.index).trim()
-      if (between) parts.push({ type: 'text', content: between })
-    }
-    parts.push({ type: 'card', src: match[3], alt: match[2], details: match[4].trim() })
-    lastIndex = pattern.lastIndex
+  const imgRe = /(?:^|\n)\s*(?:\d+[\.\)]\s*)?(!\[([^\]]*)\]\(([^)]+)\))\s*([^\n]*)/g
+  let m
+  while ((m = imgRe.exec(content)) !== null) {
+    cardInfo.push({ index: m.index, end: imgRe.lastIndex, src: m[3], alt: m[2], details: m[4].trim() })
   }
 
-  if (lastIndex < content.length) {
-    const rest = content.slice(lastIndex).trim()
+  const photoRe = /(?:Photo\s*URL:\s*)?\[Photo\s*URL\]\(([^)]+)\)/gi
+  while ((m = photoRe.exec(content)) !== null) {
+    if (cardInfo.some(c => c.index <= m.index && c.end >= m.index + m[0].length)) continue
+    const before = content.slice(0, m.index)
+    const nameMatch = before.match(/\*\*([^*]+)\*\*\s*$/m)
+    const alt = nameMatch ? nameMatch[1].trim() : 'Profile'
+    const lineStart = content.lastIndexOf('\n', m.index) + 1
+    const afterMatch = content.slice(m.index + m[0].length).match(/[^\n]*/)
+    const details = (afterMatch ? afterMatch[0].trim() : '')
+    cardInfo.push({ index: lineStart, end: m.index + m[0].length + (afterMatch ? afterMatch[0].length : 0), src: m[1], alt, details })
+  }
+
+  cardInfo.sort((a, b) => a.index - b.index)
+
+  let lastIdx = 0
+  for (const c of cardInfo) {
+    if (c.index > lastIdx) {
+      const between = content.slice(lastIdx, c.index).trim()
+      if (between) parts.push({ type: 'text', content: between })
+    }
+    parts.push({ type: 'card', src: c.src, alt: c.alt, details: c.details })
+    lastIdx = c.end
+  }
+  if (lastIdx < content.length) {
+    const rest = content.slice(lastIdx).trim()
     if (rest) parts.push({ type: 'text', content: rest })
   }
 
   return parts.length > 0 ? parts : [{ type: 'text', content }]
 }
 
-function LoadingDots() {
-  return (
-    <div className="flex items-center gap-2">
-      <span className="text-xs text-primary-400/70 font-medium">Thinking</span>
-      <div className="flex gap-1">
-        <motion.span
-          className="w-1.5 h-1.5 bg-primary-400 rounded-full"
-          animate={{ scale: [0.6, 1.2, 0.6], opacity: [0.4, 1, 0.4] }}
-          transition={{ duration: 1.4, repeat: Infinity, delay: 0, ease: 'easeInOut' }}
-        />
-        <motion.span
-          className="w-1.5 h-1.5 bg-primary-400 rounded-full"
-          animate={{ scale: [0.6, 1.2, 0.6], opacity: [0.4, 1, 0.4] }}
-          transition={{ duration: 1.4, repeat: Infinity, delay: 0.2, ease: 'easeInOut' }}
-        />
-        <motion.span
-          className="w-1.5 h-1.5 bg-primary-400 rounded-full"
-          animate={{ scale: [0.6, 1.2, 0.6], opacity: [0.4, 1, 0.4] }}
-          transition={{ duration: 1.4, repeat: Infinity, delay: 0.4, ease: 'easeInOut' }}
-        />
-      </div>
-    </div>
-  )
-}
-
-export default function ChatMessage({ message, onRetry, streaming }) {
+export default function ChatMessage({ message, onRetry, streaming, currentSteps }) {
   const isUser = message.role === 'user'
   const content = typeof message.content === 'string'
     ? message.content
@@ -145,7 +139,7 @@ export default function ChatMessage({ message, onRetry, streaming }) {
         }`}
       >
         {isStreaming ? (
-          <LoadingDots />
+          <ThinkingIndicator steps={currentSteps} />
         ) : !hasCards ? (
           <>
             <p className="text-sm leading-relaxed whitespace-pre-wrap">{content}</p>

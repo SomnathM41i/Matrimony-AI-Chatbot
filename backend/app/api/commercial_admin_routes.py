@@ -1,8 +1,8 @@
 import json
-from datetime import datetime, timedelta, timezone
-
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import delete, func, select
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from typing import Optional, List
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -15,32 +15,42 @@ from app.models.commercial_model import (
     AITaskTarget,
     AIUsageEvent,
     AdminAuditEvent,
-    PaymentOrder,
-    PaymentGateway,
-    Subscription,
-    SubscriptionPlan,
 )
 from app.models.user_model import User
-from app.schemas.commercial_schema import (
-    ManualPaymentConfirm,
-    GatewayInput,
-    ModelInput,
-    PlanInput,
-    ProviderInput,
-    RouteInput,
-    SubscriptionAssignment,
-    SubscriptionAdminUpdate,
-)
-from app.services.commercial_service import (
-    activate_order,
-    add_audit,
-    commercial_summary,
-    create_subscription,
-    plan_dict,
-    subscription_dict,
-)
+from app.services.commercial_service import add_audit
 
 router = APIRouter(prefix="/api/admin/commercial", tags=["admin-commercial"])
+
+
+class ProviderInput(BaseModel):
+    code: str
+    name: str
+    adapter_type: str = "openai_compatible"
+    base_url: str
+    api_key_env: str = ""
+    enabled: bool = True
+    verify_ssl: bool = True
+    timeout_seconds: int = 30
+    retry_count: int = 2
+
+
+class ModelInput(BaseModel):
+    provider_id: int
+    external_id: str
+    display_name: str
+    context_window: int = 8192
+    max_output_tokens: int = 1200
+    supports_json: bool = True
+    supports_sql: bool = True
+    input_cost_paise_per_million: int = 0
+    output_cost_paise_per_million: int = 0
+    enabled: bool = True
+
+
+class RouteInput(BaseModel):
+    task_key: str
+    model_ids: List[int]
+    enabled: bool = True
 
 
 def provider_dict(item: AIProvider) -> dict:
@@ -64,36 +74,6 @@ def model_dict(item: AIModel) -> dict:
         "output_cost_paise_per_million": item.output_cost_paise_per_million,
         "enabled": item.enabled,
     }
-
-
-@router.get("/summary")
-async def summary(db: AsyncSession = Depends(get_db), admin: User = Depends(require_admin)):
-    return await commercial_summary(db)
-
-
-@router.get("/plans")
-async def plans(db: AsyncSession = Depends(get_db), admin: User = Depends(require_admin)):
-    items = (await db.execute(select(SubscriptionPlan).order_by(SubscriptionPlan.code, SubscriptionPlan.version.desc()))).scalars().all()
-    return [plan_dict(item) for item in items]
-
-
-@router.post("/plans")
-async def create_plan(body: PlanInput, db: AsyncSession = Depends(get_db), admin: User = Depends(require_admin)):
-    code = body.code.strip().upper()
-    latest = (
-        await db.execute(select(func.max(SubscriptionPlan.version)).where(SubscriptionPlan.code == code))
-    ).scalar() or 0
-    current = (
-        await db.execute(select(SubscriptionPlan).where(SubscriptionPlan.code == code, SubscriptionPlan.is_current.is_(True)))
-    ).scalars().all()
-    for item in current:
-        item.is_current = False
-    plan = SubscriptionPlan(**body.model_dump(exclude={"code"}), code=code, version=latest + 1, is_current=True)
-    db.add(plan)
-    await db.flush()
-    await add_audit(db, admin.id, "plan.version_created", "subscription_plan", plan.id, after=plan_dict(plan))
-    await db.commit()
-    return plan_dict(plan)
 
 
 @router.get("/providers")
@@ -153,8 +133,6 @@ async def update_model(model_id: int, body: ModelInput, db: AsyncSession = Depen
     item = await db.get(AIModel, model_id)
     if not item:
         raise HTTPException(status_code=404, detail="Model not found")
-    provider = await db.get(AIProvider, item.provider_id)
-    item.provider = provider
     before = model_dict(item)
     for key, value in body.model_dump().items():
         setattr(item, key, value)
@@ -240,141 +218,9 @@ async def test_route(task_key: str, db: AsyncSession = Depends(get_db), admin: U
     return {"content": result["content"], "events": result.get("events", [])}
 
 
-@router.get("/subscriptions")
-async def subscriptions(
-    page: int = Query(1, ge=1), per_page: int = Query(50, ge=1, le=200),
-    db: AsyncSession = Depends(get_db), admin: User = Depends(require_admin),
-):
-    rows = (
-        await db.execute(
-            select(Subscription, User).join(User, Subscription.user_id == User.id)
-            .order_by(Subscription.id.desc()).offset((page - 1) * per_page).limit(per_page)
-        )
-    ).all()
-    return [{**subscription_dict(sub), "user_id": user.id, "user_name": user.name, "user_email": user.email} for sub, user in rows]
-
-
-@router.post("/users/{user_id}/subscription")
-async def assign_subscription(user_id: int, body: SubscriptionAssignment, db: AsyncSession = Depends(get_db), admin: User = Depends(require_admin)):
-    if not await db.get(User, user_id):
-        raise HTTPException(status_code=404, detail="User not found")
-    plan = await db.get(SubscriptionPlan, body.plan_id)
-    if not plan or not plan.is_active:
-        raise HTTPException(status_code=404, detail="Active plan not found")
-    active = (await db.execute(select(Subscription).where(Subscription.user_id == user_id, Subscription.status == "active"))).scalars().all()
-    for item in active:
-        item.status = "replaced_by_admin"
-    start = body.starts_at or datetime.now(timezone.utc)
-    item = create_subscription(user_id, plan, start)
-    db.add(item)
-    await db.flush()
-    await add_audit(db, admin.id, "subscription.assigned", "subscription", item.id, after=subscription_dict(item))
-    await db.commit()
-    return subscription_dict(item)
-
-
-@router.patch("/subscriptions/{subscription_id}")
-async def update_subscription(
-    subscription_id: int,
-    body: SubscriptionAdminUpdate,
-    db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin),
-):
-    item = await db.get(Subscription, subscription_id)
-    if not item:
-        raise HTTPException(status_code=404, detail="Subscription not found")
-    before = subscription_dict(item)
-    if body.status is not None:
-        allowed = {"active", "cancelled", "expired", "suspended"}
-        if body.status not in allowed:
-            raise HTTPException(status_code=400, detail=f"Status must be one of: {', '.join(sorted(allowed))}")
-        item.status = body.status
-    if body.credits_delta:
-        item.credits_allocated = max(item.credits_used, item.credits_allocated + body.credits_delta)
-    if body.extend_days:
-        item.expires_at = item.expires_at + timedelta(days=body.extend_days)
-    if body.daily_message_limit is not None:
-        item.daily_message_limit = body.daily_message_limit
-    await db.flush()
-    await add_audit(db, admin.id, "subscription.updated", "subscription", item.id, before, subscription_dict(item))
-    await db.commit()
-    return subscription_dict(item)
-
-
-@router.get("/orders")
-async def orders(db: AsyncSession = Depends(get_db), admin: User = Depends(require_admin)):
-    rows = (
-        await db.execute(select(PaymentOrder, User).join(User, PaymentOrder.user_id == User.id).order_by(PaymentOrder.id.desc()).limit(200))
-    ).all()
-    return [
-        {"id": order.id, "order_reference": order.order_reference, "user_id": user.id,
-         "user_name": user.name, "plan_id": order.plan_id, "amount_paise": order.amount_paise,
-         "currency": order.currency, "status": order.status, "created_at": order.created_at.isoformat()}
-        for order, user in rows
-    ]
-
-
-def gateway_dict(item: PaymentGateway) -> dict:
-    return {
-        "id": item.id, "code": item.code, "name": item.name,
-        "adapter_type": item.adapter_type, "key_id_env": item.key_id_env,
-        "secret_env": item.secret_env, "webhook_secret_env": item.webhook_secret_env,
-        "enabled": item.enabled,
-    }
-
-
-@router.get("/gateways")
-async def gateways(db: AsyncSession = Depends(get_db), admin: User = Depends(require_admin)):
-    items = (await db.execute(select(PaymentGateway).order_by(PaymentGateway.id))).scalars().all()
-    return [gateway_dict(item) for item in items]
-
-
-@router.post("/gateways")
-async def create_gateway(body: GatewayInput, db: AsyncSession = Depends(get_db), admin: User = Depends(require_admin)):
-    values = body.model_dump()
-    values["code"] = body.code.strip().lower()
-    item = PaymentGateway(**values)
-    db.add(item)
-    await db.flush()
-    await add_audit(db, admin.id, "payment_gateway.created", "payment_gateway", item.id, after=gateway_dict(item))
-    await db.commit()
-    return gateway_dict(item)
-
-
-@router.patch("/gateways/{gateway_id}")
-async def update_gateway(gateway_id: int, body: GatewayInput, db: AsyncSession = Depends(get_db), admin: User = Depends(require_admin)):
-    item = await db.get(PaymentGateway, gateway_id)
-    if not item:
-        raise HTTPException(status_code=404, detail="Gateway not found")
-    before = gateway_dict(item)
-    for key, value in body.model_dump().items():
-        setattr(item, key, value.strip().lower() if key == "code" else value)
-    await add_audit(db, admin.id, "payment_gateway.updated", "payment_gateway", item.id, before, gateway_dict(item))
-    await db.commit()
-    return gateway_dict(item)
-
-
-@router.post("/orders/{order_id}/confirm")
-async def confirm_order(order_id: int, body: ManualPaymentConfirm, db: AsyncSession = Depends(get_db), admin: User = Depends(require_admin)):
-    order = await db.get(PaymentOrder, order_id)
-    if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
-    if order.status not in {"pending", "paid"}:
-        raise HTTPException(status_code=400, detail="Order cannot be confirmed")
-    subscription = await activate_order(db, order, body.provider_payment_id)
-    await add_audit(db, admin.id, "payment.manually_confirmed", "payment_order", order.id, after={"payment_reference": body.provider_payment_id})
-    await db.commit()
-    return {"order_id": order.id, "status": order.status, "subscription": subscription_dict(subscription)}
-
-
 @router.get("/usage")
-async def usage(
-    page: int = Query(1, ge=1), per_page: int = Query(100, ge=1, le=500),
-    db: AsyncSession = Depends(get_db), admin: User = Depends(require_admin),
-):
-    items = (
-        await db.execute(select(AIUsageEvent).order_by(AIUsageEvent.id.desc()).offset((page - 1) * per_page).limit(per_page))
-    ).scalars().all()
+async def usage(db: AsyncSession = Depends(get_db), admin: User = Depends(require_admin)):
+    items = (await db.execute(select(AIUsageEvent).order_by(AIUsageEvent.id.desc()).limit(200))).scalars().all()
     return [
         {"id": item.id, "request_id": item.request_id, "user_id": item.user_id,
          "task_key": item.task_key, "request_type": item.request_type,

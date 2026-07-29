@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Users, UserCheck, UserX, CreditCard, Activity, Shield } from 'lucide-react'
+import { Users, UserCheck, UserX, CreditCard, Activity } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts'
 import StatsCard from '../../components/admin/StatsCard'
 import { getAdminStats } from '../../services/adminService'
@@ -80,8 +80,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <StatsCard label="Membership Plans" value={stats?.membership_plans} icon={Shield} color="purple" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <StatsCard label="Success Stories" value={stats?.success_stories} icon={Activity} color="amber" />
         <StatsCard label="Male / Female" value={`${stats?.male_members || 0} / ${stats?.female_members || 0}`} icon={Users} color="blue" />
       </div>

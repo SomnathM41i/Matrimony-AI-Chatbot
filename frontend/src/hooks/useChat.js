@@ -8,6 +8,7 @@ import { getApiErrorMessage } from '../utils/apiError'
 export function useChat(conversationId = null, onNewConversation) {
   const [messages, setMessages] = useState([])
   const [streaming, setStreaming] = useState(false)
+  const [currentSteps, setCurrentSteps] = useState([])
   const queryClient = useQueryClient()
   const activeConvId = useRef(conversationId)
   const lastSentRef = useRef('')
@@ -73,6 +74,7 @@ export function useChat(conversationId = null, onNewConversation) {
       }
 
       setMessages((prev) => [...prev, botMsg])
+      setCurrentSteps([])
       setStreaming(true)
 
       const { stream, abort } = sendMessageStream(message, msgConvId)
@@ -82,7 +84,9 @@ export function useChat(conversationId = null, onNewConversation) {
         let doneEvent = null
         try {
           for await (const event of stream) {
-            if (event.type === 'token') {
+            if (event.type === 'status') {
+              setCurrentSteps((prev) => [...prev, { step: event.step, startedAt: Date.now() }])
+            } else if (event.type === 'token') {
               setMessages((prev) => {
                 const updated = [...prev]
                 const last = updated[updated.length - 1]
@@ -126,6 +130,7 @@ export function useChat(conversationId = null, onNewConversation) {
           return
         } finally {
           setStreaming(false)
+          setCurrentSteps([])
           abortRef.current = null
         }
 
@@ -167,9 +172,10 @@ export function useChat(conversationId = null, onNewConversation) {
 
   const abort = useCallback(() => {
     abortRef.current?.()
-    setStreaming(false)
-    abortRef.current = null
-    setMessages((prev) => {
+      setStreaming(false)
+      setCurrentSteps([])
+      abortRef.current = null
+      setMessages((prev) => {
       const last = prev[prev.length - 1]
       if (last && last.role === 'assistant' && !last.content) {
         return prev.slice(0, -1)
@@ -198,6 +204,7 @@ export function useChat(conversationId = null, onNewConversation) {
   return {
     messages,
     streaming,
+    currentSteps,
     send,
     abort,
     retry,

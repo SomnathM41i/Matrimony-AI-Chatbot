@@ -99,7 +99,7 @@ _UNKNOWN_PERSONAL_ATTRIBUTES = [
 ]
 
 _KNOWN_PERSONAL_COLUMNS = {
-    "diet", "smoke", "drink", "hobbies", "interests", "aboutmyself",
+    "diet", "smoke", "drink", "hobbies", "interests",
     "education", "educationdetails", "occupation", "employedin", "annualincome",
     "height", "weight", "bloodgroup", "bodytype", "complexion",
     "familyvalues", "familytype", "familystatus",
@@ -109,7 +109,7 @@ _KNOWN_PERSONAL_COLUMNS = {
     "religion", "caste", "subcaste",
     "city", "dist", "state", "country", "residencystatus",
     "matriid", "name", "age", "gender", "maritalstatus",
-    "mobile", "photo1", "partner_expectations",
+    "mobile", "photo1",
 }
 
 
@@ -384,6 +384,19 @@ async def _handle_profile_search(
     }
 
 
+_DETAIL_CATEGORY_QUESTION = (
+    "What would you like to know about this profile? I can tell you about:\n\n"
+    "📚 **Education & Career** — education, occupation, income\n"
+    "👨‍👩‍👧‍👦 **Family Details** — parents, siblings, family values\n"
+    "🔮 **Horoscope & Manglik** — star, moon sign, manglik, gotra\n"
+    "📍 **Location** — city, district, state\n"
+    "🏋️ **Physical Attributes** — height, weight, blood group, complexion\n"
+    "🌿 **Lifestyle** — diet, smoking, drinking, hobbies\n"
+    "📷 **Photo & Contact** — photo, mobile number\n\n"
+    "Just tell me which area you're interested in!"
+)
+
+
 async def _handle_profile_detail(
     message: str, fields: list[str] | None, limit: int, history, db,
     selected_profile: dict | None = None,
@@ -401,6 +414,9 @@ async def _handle_profile_detail(
             "Which profile would you like details about? Please select one first.",
         )
         return {"content": msg, "is_profile_search": False, "usage": {}, "events": [], "metadata": None}
+
+    if fields in (None, ["all"]):
+        return {"content": _DETAIL_CATEGORY_QUESTION, "is_profile_search": False, "usage": {}, "events": [], "metadata": {"selected_profile": selected_profile, "accumulated_filters": {}}}
 
     sql, params = build_detail_query(matri_id=matri_id, name=name, fields=fields, limit=limit)
     sql_result = await execute_param_query(sql, params)
@@ -488,7 +504,7 @@ def get_database_stats() -> dict:
         "banned_members": "SELECT COUNT(*) as c FROM register WHERE Status='Banned'",
         "male_members": "SELECT COUNT(*) as c FROM register WHERE Gender='Male' AND Status IN ('Active','Paid')",
         "female_members": "SELECT COUNT(*) as c FROM register WHERE Gender='Female' AND Status IN ('Active','Paid')",
-        "membership_plans": "SELECT COUNT(*) as c FROM membershipplan",
+
         "success_stories": "SELECT COUNT(*) as c FROM successstory",
     }
     for key, sql in tables.items():

@@ -39,7 +39,6 @@ DETAIL_COLUMNS = [
     "Fathername", "Mothersname", "Fathersoccupation", "Mothersoccupation",
     "noofbrothers", "noofsisters",
     "Hobbies", "Interests",
-    "AboutMyself", "PartnerExpectations",
 ]
 
 COLUMN_GROUPS = {
