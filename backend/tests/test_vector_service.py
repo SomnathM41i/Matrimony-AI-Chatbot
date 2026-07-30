@@ -136,21 +136,25 @@ class SearchWithFiltersTests(unittest.TestCase):
     @patch("app.services.vector_service.get_client")
     def test_search_no_filters(self, mock_get_client):
         mock_client = MagicMock()
-        mock_client.search.return_value = []
+        mock_response = MagicMock()
+        mock_response.points = []
+        mock_client.query_points.return_value = mock_response
         mock_get_client.return_value = mock_client
 
         result = search_with_filters([0.1, 0.2])
         self.assertEqual(result, [])
-        mock_client.search.assert_called_once()
+        mock_client.query_points.assert_called_once()
 
     @patch("app.services.vector_service.get_client")
     def test_gender_filter_applied(self, mock_get_client):
         mock_client = MagicMock()
-        mock_client.search.return_value = []
+        mock_response = MagicMock()
+        mock_response.points = []
+        mock_client.query_points.return_value = mock_response
         mock_get_client.return_value = mock_client
 
         search_with_filters([0.1], filters={"gender": "Female"})
-        call_kwargs = mock_client.search.call_args[1]
+        call_kwargs = mock_client.query_points.call_args[1]
         qfilter = call_kwargs["query_filter"]
         self.assertIsNotNone(qfilter)
         self.assertEqual(len(qfilter.must), 1)
@@ -158,11 +162,13 @@ class SearchWithFiltersTests(unittest.TestCase):
     @patch("app.services.vector_service.get_client")
     def test_age_range_filter(self, mock_get_client):
         mock_client = MagicMock()
-        mock_client.search.return_value = []
+        mock_response = MagicMock()
+        mock_response.points = []
+        mock_client.query_points.return_value = mock_response
         mock_get_client.return_value = mock_client
 
         search_with_filters([0.1], filters={"age_min": 21, "age_max": 35})
-        call_kwargs = mock_client.search.call_args[1]
+        call_kwargs = mock_client.query_points.call_args[1]
         qfilter = call_kwargs["query_filter"]
         self.assertEqual(len(qfilter.must), 2)
 
@@ -172,7 +178,9 @@ class SearchWithFiltersTests(unittest.TestCase):
         mock_result = MagicMock()
         mock_result.score = 0.3
         mock_result.payload = {"Name": "Low Score"}
-        mock_client.search.return_value = [mock_result]
+        mock_response = MagicMock()
+        mock_response.points = [mock_result]
+        mock_client.query_points.return_value = mock_response
         mock_get_client.return_value = mock_client
 
         result = search_with_filters([0.1])
@@ -184,7 +192,9 @@ class SearchWithFiltersTests(unittest.TestCase):
         mock_result = MagicMock()
         mock_result.score = 0.8
         mock_result.payload = {"Name": "High Score"}
-        mock_client.search.return_value = [mock_result]
+        mock_response = MagicMock()
+        mock_response.points = [mock_result]
+        mock_client.query_points.return_value = mock_response
         mock_get_client.return_value = mock_client
 
         result = search_with_filters([0.1])

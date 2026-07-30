@@ -65,6 +65,8 @@ class Settings(BaseSettings):
     CHAT_HISTORY_LIMIT: int = 30
     CONTEXT_TIMEOUT_SECONDS: int = 3600
     ROUTER_THRESHOLD: float = 0.1
+    ROUTER_CONFIDENCE_THRESHOLD: float = 0.05
+    APP_TIMEZONE: str = "Asia/Kolkata"
     QDRANT_HOST: str = "localhost"
     QDRANT_PORT: int = 6333
     EMBEDDING_MODEL: str = "BAAI/bge-m3"
