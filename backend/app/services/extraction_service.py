@@ -286,7 +286,7 @@ async def extract_search_params(
     try:
         best_cls, score = router.route(message)
         logger.info(f"TF-IDF Local Router classified: '{message}' -> '{best_cls}' (Similarity: {score:.3f})")
-        if best_cls == 'general':
+        if best_cls == 'general' or score < settings.ROUTER_THRESHOLD:
             return {"intent": "general", "filters": {}, "limit": 10, "selected_index": None, "selected_reference": None}
     except Exception as e:
         logger.warning(f"TF-IDF routing exception: {e}")
