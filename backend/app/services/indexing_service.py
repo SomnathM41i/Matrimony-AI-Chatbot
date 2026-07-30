@@ -5,7 +5,7 @@ from app.services.db_query_service import execute_param_query, safe_query
 from app.services.embedding_service import build_profile_document, embed_batch, get_embedding_dimension
 from app.services.vector_service import (
     upsert_batch, delete_collection, hash_id,
-    COLLECTION_NAME, VECTOR_SIZE,
+    COLLECTION_NAME,
 )
 from app.services.query_builder import build_profile_query
 from app.services.db_query_service import sanitize_rows
@@ -58,7 +58,7 @@ async def reindex_all():
         batch_rows = clean[i:i + embed_batch_size]
         documents = [build_profile_document(r) for r in batch_rows]
 
-        batch_embs = embed_batch(documents)
+        batch_embs = await embed_batch(documents)
         if not batch_embs:
             logger.warning(f"No embeddings for batch {i}-{i + len(batch_rows)}, skipping")
             continue

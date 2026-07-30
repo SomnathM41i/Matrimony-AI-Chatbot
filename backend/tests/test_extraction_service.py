@@ -177,9 +177,9 @@ class KeywordFallbackTests(unittest.TestCase):
         result = _keyword_fallback("profiles in Pune")
         self.assertEqual(result.get("city"), "Pune")
 
-    def test_marathi_city_captures_after_madhy(self):
+    def test_marathi_city_captures_before_madhy(self):
         result = _keyword_fallback("पुणे मध्ये मुलगी")
-        self.assertEqual(result.get("city"), "मुलगी")
+        self.assertEqual(result.get("city"), "पुणे")
         self.assertEqual(result.get("gender"), "Female")
 
     def test_no_filters_for_irrelevant(self):

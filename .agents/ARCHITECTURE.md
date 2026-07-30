@@ -9,17 +9,9 @@ User Message
     -> "general": BASE_SYSTEM_PROMPT -> LLM -> Response (HALLUCINATION RISK)
 ```
 
-## Current Architecture
+## Current Architecture (Hybrid RAG)
 
-```text
-React/Vite frontend
-  -> FastAPI REST API
-     -> SQLite application DB (auth, chat history)
-     -> Groq chat-completions API
-     -> read-only validated queries -> MySQL matrimony DB
-```
-
-## Target Architecture (Hybrid RAG)
+### Query Flow
 
 ```text
 User Message (English / Marathi / Hindi / Hinglish / mixed)
@@ -27,33 +19,52 @@ User Message (English / Marathi / Hindi / Hinglish / mixed)
   | [Feature Flag: CHAT_ENGINE = legacy | hybrid_rag]
   |
   v
-STRUCTURED EXTRACTION (llama-3.3-70b) -> structured JSON filters only
-  |                                       (NO SQL generation by LLM)
+extraction_service.py — STRUCTURED EXTRACTION (llama-3.3-70b)
+  |                     outputs structured JSON filters only (NO SQL)
   v
-PYTHON QUERY BUILDER -> parameterized SQL -> MySQL
+query_builder.py — PYTHON QUERY BUILDER -> parameterized SQL -> MySQL
   |
-  +-- Results found? --> GROUNDED GENERATION -> Formatted Response
+  +-- Results found? --> llm_service.py — GROUNDED GENERATION -> Formatted Response
   |
-  +-- No results? ----> Metadata Filtering --> Qdrant Vector Search
-                            |                    (bge-m3 embeddings)
+  +-- No results? ----> vector_service.py — Metadata Filtering -> Qdrant Vector Search
+                            |               (bge-m3 embeddings, 1024d)
                             v
                         GROUNDED GENERATION -> "No matching profiles found."
 ```
 
-## Qdrant Vector Database (Separate Instance)
+### Subscription / Quota Flow
 
 ```text
-                    +------------------+
-                    |   Qdrant VPS     |
-                    |  (KVM 1, 1GB)    |
-                    +------------------+
+Chat route
+  -> Subscription/quota reservation
+  -> Task-oriented AI orchestrator (gateway.py)
+     -> published routing configuration
+     -> provider adapter (Groq/Ollama/OpenAI-compatible)
+     -> primary/fallback model
+     -> normalized response and usage
+  -> finalize/release credits atomically
+  -> usage/cost ledger
+  -> existing chat persistence
+```
+
+### Qdrant Vector Database (Separate Instance)
+
+```text
+                    +---------------------------+
+                    |   Qdrant VPS              |
+                    |  (KVM 1, 1GB)             |
+                    |  Host: 187.127.170.116    |
+                    +---------------------------+
                            |
-                    gRPC/REST API
+                    gRPC/REST API (ports 6333/6334)
                            |
-                    +------------------+
-                    |   Main App VPS   |
-                    |  (KVM 1, 1GB)    |
-                    +------------------+
+                    +---------------------------+
+                    |   Main App VPS            |
+                    |  (KVM 1, 1GB)             |
+                    |  ** Cannot run bge-m3! ** |
+                    |  Needs upgrade to 4-6GB   |
+                    +---------------------------+
+
                     Profiles indexed as:
                     - Vector: bge-m3 embedding (1024d)
                     - Payload: Gender, Age, Caste, City, Religion,
@@ -61,20 +72,7 @@ PYTHON QUERY BUILDER -> parameterized SQL -> MySQL
                     - Filters applied BEFORE vector search
 ```
 
-## Target Hybrid RAG Architecture
-
-```text
-Chat route
-  -> Subscription/quota reservation
-  -> Task-oriented AI orchestrator
-     -> published routing configuration
-     -> provider adapter (Groq/Ollama/OpenAI-compatible/future)
-     -> primary/fallback model
-     -> normalized response and usage
-  -> finalize/release credits atomically
-  -> usage/cost ledger
-  -> existing chat persistence
-```
+> **⚠ bge-m3 RAM constraint:** The bge-m3 model requires ~4-6GB RAM for inference. The main app VPS (KVM 1, 1GB) is insufficient. The model is loaded lazily and used only during re-indexing and vector search fallback. Options: (1) upgrade main VPS to KVM 2 (2GB) or KVM 4 (4GB), (2) use a smaller model on the app VPS, (3) run embeddings on a separate instance.
 
 ## Folder Responsibilities
 

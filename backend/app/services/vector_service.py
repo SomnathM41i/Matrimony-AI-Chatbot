@@ -1,3 +1,4 @@
+import hashlib
 import time
 from typing import Any
 from qdrant_client import QdrantClient
@@ -6,7 +7,14 @@ from app.core.logger import logger
 
 
 COLLECTION_NAME = "profiles"
-VECTOR_SIZE = 1024
+
+
+def _get_vector_size() -> int:
+    try:
+        from app.services.embedding_service import get_embedding_dimension
+        return get_embedding_dimension()
+    except Exception:
+        return 1024
 PAYLOAD_INDEXED_FIELDS = ["Gender", "Caste", "City", "Religion", "Maritalstatus"]
 
 MAX_UPSERT_RETRIES = 3
@@ -15,10 +23,14 @@ MAX_UPSERT_RETRIES = 3
 _client_instance = None
 
 
+_client_config = {}
+
+
 def get_client(host: str = "localhost", port: int = 6333) -> QdrantClient:
-    global _client_instance
-    if _client_instance is None:
+    global _client_instance, _client_config
+    if _client_instance is None or _client_config != {"host": host, "port": port}:
         _client_instance = QdrantClient(host=host, port=port, timeout=120)
+        _client_config = {"host": host, "port": port}
         _ensure_collection(_client_instance)
     return _client_instance
 
@@ -31,7 +43,7 @@ def _ensure_collection(client: QdrantClient):
     client.create_collection(
         collection_name=COLLECTION_NAME,
         vectors_config=models.VectorParams(
-            size=VECTOR_SIZE,
+            size=_get_vector_size(),
             distance=models.Distance.COSINE,
         ),
     )
@@ -81,7 +93,7 @@ def upsert_batch(profiles: list[dict], host: str = "localhost", port: int = 6333
 
 
 def hash_id(matri_id: str) -> int:
-    return abs(hash(matri_id)) % (2**63 - 1)
+    return int(hashlib.md5(matri_id.encode("utf-8")).hexdigest(), 16) % (2**63 - 1)
 
 
 def search_with_filters(

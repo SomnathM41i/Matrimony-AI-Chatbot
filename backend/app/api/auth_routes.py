@@ -10,7 +10,7 @@ from app.services.auth_service import AuthService
 from app.repositories.user_repository import UserRepository
 from app.models.user_model import User
 from app.models.chat_model import ChatMessage
-from app.main import limiter
+from app.core.limiter import limiter
 from app.config import settings
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])

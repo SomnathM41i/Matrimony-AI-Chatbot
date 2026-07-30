@@ -3,10 +3,10 @@ from unittest.mock import AsyncMock, patch
 
 import httpx
 
-from app.services.chat_service import user_facing_error
+from app.services.chat_service import user_facing_error, _is_greeting_only
 from app.ai.llm_client import call_llm
-from backend.app.core.old_prompts import BASE_SYSTEM_PROMPT
-from app.services.db_query_service import DatabaseQueryError, _sync_safe_query, validate_select_sql
+from app.core.old_prompts import BASE_SYSTEM_PROMPT
+from app.services.db_query_service import DatabaseQueryError, _sync_safe_query, validate_select_sql, _message_asks_about_unavailable_attribute
 
 
 class UserFacingErrorTests(unittest.TestCase):
@@ -104,6 +104,99 @@ class GeneralPromptQualityTests(unittest.TestCase):
             BASE_SYSTEM_PROMPT,
         )
         self.assertIn('User: c5++1+', BASE_SYSTEM_PROMPT)
+
+
+class AntiHallucinationGuardTests(unittest.TestCase):
+    def test_detects_favorite_food_query(self):
+        self.assertTrue(_message_asks_about_unavailable_attribute("what is her favorite food"))
+
+    def test_detects_biryani_query(self):
+        self.assertTrue(_message_asks_about_unavailable_attribute("does she like biryani"))
+
+    def test_detects_appetite_query(self):
+        self.assertTrue(_message_asks_about_unavailable_attribute("how much does she eat"))
+
+    def test_detects_marathi_food_query(self):
+        self.assertTrue(_message_asks_about_unavailable_attribute("ती काय खाते"))
+
+    def test_detects_veg_nonveg_query(self):
+        self.assertTrue(_message_asks_about_unavailable_attribute("is she veg"))
+
+    def test_detects_eating_habit_query(self):
+        self.assertTrue(_message_asks_about_unavailable_attribute("what are her eating habits"))
+
+    def test_detects_family_member_query(self):
+        self.assertTrue(_message_asks_about_unavailable_attribute("tell me about her father"))
+
+    def test_allows_age_query(self):
+        self.assertFalse(_message_asks_about_unavailable_attribute("what is her age"))
+
+    def test_allows_city_query(self):
+        self.assertFalse(_message_asks_about_unavailable_attribute("which city does she live in"))
+
+    def test_detects_education_query(self):
+        self.assertTrue(_message_asks_about_unavailable_attribute("her education details"))
+
+    def test_allows_occupation_query(self):
+        self.assertFalse(_message_asks_about_unavailable_attribute("what is her occupation"))
+
+    def test_allows_random_general_query(self):
+        self.assertFalse(_message_asks_about_unavailable_attribute("how are you"))
+
+    def test_empty_message_returns_false(self):
+        self.assertFalse(_message_asks_about_unavailable_attribute(""))
+
+    def test_detects_prefer_biryani(self):
+        self.assertTrue(_message_asks_about_unavailable_attribute("does she prefer biryani"))
+
+
+class GreetingShortcutTests(unittest.TestCase):
+    def test_hi_returns_greeting(self):
+        self.assertIsNotNone(_is_greeting_only("hi"))
+
+    def test_hello_returns_greeting(self):
+        self.assertIsNotNone(_is_greeting_only("hello"))
+
+    def test_hey_returns_greeting(self):
+        self.assertIsNotNone(_is_greeting_only("hey"))
+
+    def test_namaste_returns_greeting(self):
+        self.assertIsNotNone(_is_greeting_only("namaste"))
+
+    def test_marathi_namaskar_returns_greeting(self):
+        self.assertIsNotNone(_is_greeting_only("नमस्कार"))
+
+    def test_good_morning_returns_greeting(self):
+        self.assertIsNotNone(_is_greeting_only("good morning"))
+
+    def test_greeting_with_punctuation_still_matches(self):
+        self.assertIsNotNone(_is_greeting_only("hello!"))
+
+    def test_greeting_with_trailing_dot_still_matches(self):
+        self.assertIsNotNone(_is_greeting_only("hi."))
+
+    def test_non_greeting_returns_none(self):
+        self.assertIsNone(_is_greeting_only("show me maratha girls"))
+
+    def test_random_word_returns_none(self):
+        self.assertIsNone(_is_greeting_only("xylophone"))
+
+    def test_empty_message_returns_none(self):
+        self.assertIsNone(_is_greeting_only(""))
+
+    def test_multi_word_message_not_a_greeting(self):
+        self.assertIsNone(_is_greeting_only("hello how are you"))
+
+    def test_greeting_content_returned_is_string(self):
+        result = _is_greeting_only("hi")
+        self.assertIsInstance(result, str)
+        self.assertIn("myvivahai", result)
+
+    def test_case_insensitive_greeting(self):
+        self.assertIsNotNone(_is_greeting_only("HELLO"))
+
+    def test_whitespace_around_greeting(self):
+        self.assertIsNotNone(_is_greeting_only("  hi  "))
 
 
 if __name__ == "__main__":

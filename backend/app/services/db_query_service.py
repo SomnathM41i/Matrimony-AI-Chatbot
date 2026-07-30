@@ -1,5 +1,6 @@
 import asyncio
 import re
+import threading
 import mysql.connector
 from mysql.connector.pooling import MySQLConnectionPool
 from app.config import settings
@@ -34,7 +35,7 @@ def validate_select_sql(sql: str, allowed_tables: set) -> str:
     if ";" in lowered:
         raise ValueError("Only one query is allowed.")
 
-    if re.search(r'\bselect\b.*\bfrom\b.*\bselect\b', lowered, re.DOTALL):
+    if re.search(r'\b(?:with|select)\b.*\bfrom\b.*\bselect\b', lowered, re.DOTALL):
         raise ValueError("Subqueries are not allowed.")
 
     select_clause = re.split(r'\bfrom\b', lowered, maxsplit=1)[0]
@@ -140,19 +141,22 @@ def _build_connection_args():
 
 
 _pool = None
+_pool_lock = threading.Lock()
 
 
 def _get_pool():
     global _pool
     if _pool is None:
-        try:
-            _pool = MySQLConnectionPool(
-                pool_name="mvv_pool",
-                pool_size=settings.DB_POOL_SIZE,
-                **_build_connection_args(),
-            )
-        except Exception:
-            return None
+        with _pool_lock:
+            if _pool is None:
+                try:
+                    _pool = MySQLConnectionPool(
+                        pool_name="mvv_pool",
+                        pool_size=settings.DB_POOL_SIZE,
+                        **_build_connection_args(),
+                    )
+                except Exception:
+                    return None
     return _pool
 
 
@@ -304,7 +308,7 @@ async def _handle_profile_search(
             get_client(host=settings.QDRANT_HOST, port=settings.QDRANT_PORT)
 
             query_text = build_profile_document(filters)
-            query_vector = embed_text(
+            query_vector = await embed_text(
                 f"query: {message}. {query_text}",
                 model_name=settings.EMBEDDING_MODEL,
             )

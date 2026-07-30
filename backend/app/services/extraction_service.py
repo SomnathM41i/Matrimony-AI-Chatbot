@@ -216,7 +216,9 @@ def _keyword_fallback(message: str) -> dict:
             filters["caste"] = caste_keyword.title()
             break
 
-    city_match = re.search(r'(?:^|\s)(?:in|at|from|ची|चा|मध्ये|में|का|की)\s+([A-Za-z\u0900-\u097F]{3,})', msg)
+    city_match = re.search(r'(?:^|\s)(?:in|at|from)\s+([A-Za-z\u0900-\u097F]{3,})', msg)
+    if not city_match:
+        city_match = re.search(r'([A-Za-z\u0900-\u097F]{3,})\s+(?:मध्ये|में|का|की|ची|चा)', msg)
     if city_match:
         filters["city"] = city_match.group(1).capitalize()
 

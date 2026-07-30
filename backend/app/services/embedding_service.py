@@ -25,19 +25,29 @@ def get_embedding_dimension(model_name: str = DEFAULT_MODEL) -> int:
     return model.get_sentence_embedding_dimension()
 
 
-def embed_text(text: str, model_name: str = DEFAULT_MODEL) -> list[float]:
+async def embed_text(text: str, model_name: str = DEFAULT_MODEL) -> list[float]:
+    import asyncio
     model = get_embedding_model(model_name)
-    embedding = model.encode(text, normalize_embeddings=True)
+
+    def _encode():
+        return model.encode(text, normalize_embeddings=True)
+
+    embedding = await asyncio.to_thread(_encode)
     if isinstance(embedding, np.ndarray):
         return embedding.tolist()
     return list(embedding)
 
 
-def embed_batch(texts: list[str], model_name: str = DEFAULT_MODEL) -> list[list[float]]:
+async def embed_batch(texts: list[str], model_name: str = DEFAULT_MODEL) -> list[list[float]]:
+    import asyncio
     if not texts:
         return []
     model = get_embedding_model(model_name)
-    embeddings = model.encode(texts, normalize_embeddings=True, show_progress_bar=False)
+
+    def _encode():
+        return model.encode(texts, normalize_embeddings=True, show_progress_bar=False)
+
+    embeddings = await asyncio.to_thread(_encode)
     return [e.tolist() if isinstance(e, np.ndarray) else list(e) for e in embeddings]
 
 

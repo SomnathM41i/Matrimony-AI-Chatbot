@@ -35,3 +35,14 @@ class UserRepository:
         user.last_login = datetime.now(timezone.utc)
         await self.db.flush()
         return user
+
+    async def increment_token_version(self, user_id: int, current_version: int) -> bool:
+        from sqlalchemy import update as sa_update
+        stmt = (
+            sa_update(User)
+            .where(User.id == user_id, User.token_version == current_version)
+            .values(token_version=User.token_version + 1)
+        )
+        result = await self.db.execute(stmt)
+        await self.db.flush()
+        return result.rowcount > 0

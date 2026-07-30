@@ -6,7 +6,7 @@ from app.dependencies import get_db, get_authenticated_user
 from app.schemas.chat_schema import ChatRequest, ChatResponse, UsageInfo
 from app.services.chat_service import ChatService
 from app.models.user_model import User
-from app.main import limiter
+from app.core.limiter import limiter
 from app.core.logger import logger
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])

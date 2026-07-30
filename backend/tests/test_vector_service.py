@@ -8,7 +8,6 @@ from app.services.vector_service import (
     search_with_filters,
     delete_collection,
     COLLECTION_NAME,
-    VECTOR_SIZE,
     PAYLOAD_INDEXED_FIELDS,
 )
 

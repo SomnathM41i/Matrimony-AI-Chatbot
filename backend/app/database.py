@@ -44,8 +44,8 @@ async def create_tables():
                 try:
                     sync_conn.execute(text(f"ALTER TABLE users ADD COLUMN {col[0]} {col[1]} DEFAULT {col[2]}"))
                     logger.info(f"Added {col[0]} column to users table")
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Column {col[0]} already exists on users table: {e}")
             for col in [
                 ("prompt_tokens", "INTEGER", "0"),
                 ("completion_tokens", "INTEGER", "0"),
@@ -54,8 +54,8 @@ async def create_tables():
                 try:
                     sync_conn.execute(text(f"ALTER TABLE chat_messages ADD COLUMN {col[0]} {col[1]} DEFAULT {col[2]}"))
                     logger.info(f"Added {col[0]} column to chat_messages table")
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Column {col[0]} already exists on chat_messages table: {e}")
         await conn.run_sync(_migrate)
 
     from app.services.commercial_service import seed_commercial_defaults

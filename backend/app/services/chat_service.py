@@ -119,15 +119,14 @@ class ChatService:
                 continue
             try:
                 metadata = json.loads(m.metadata_json)
-                selected_profile = selected_profile or metadata.get("selected_profile")
-                if metadata.get("accumulated_filters") and accumulated_filters is None:
-                    accumulated_filters = metadata["accumulated_filters"]
+                if selected_profile is None:
+                    selected_profile = metadata.get("selected_profile")
+                if accumulated_filters is None:
+                    accumulated_filters = metadata.get("accumulated_filters")
                 if cached_profile_data is None:
                     cached_profile_data = metadata.get("cached_profile_data")
             except (TypeError, ValueError):
                 continue
-            if selected_profile and accumulated_filters is not None and cached_profile_data is not None:
-                break
 
         if selected_profile:
             history.append({
@@ -287,7 +286,7 @@ class ChatService:
                             timer.begin("ai_search")
                             yield f"data: {json.dumps({'type': 'status', 'step': 'ai_search'})}\n\n"
                             query_text = build_profile_document(filters)
-                            query_vector = embed_text(f"query: {message}. {query_text}", model_name=settings.EMBEDDING_MODEL)
+                            query_vector = await embed_text(f"query: {message}. {query_text}", model_name=settings.EMBEDDING_MODEL)
                             vector_rows = search_with_filters(query_vector, filters=filters, limit=limit, host=settings.QDRANT_HOST, port=settings.QDRANT_PORT)
                             if vector_rows:
                                 for row in vector_rows:

@@ -63,7 +63,7 @@
 - Root cause: The development laptop runs Python 3.14.x. PyTorch and sentence-transformers may not have official wheels for Python 3.14, requiring compilation from source or fallback to CPU-only builds.
 - Affected files: `backend/requirements.txt`, deployment environment.
 - Severity: Medium — may cause installation delays or require Python version downgrade.
-- Status: Open. To be verified during Phase 3 (embedding service). Alternative: use Python 3.12 if 3.14 compatibility fails.
+- Status: Resolved 2026-07-26. Phase 3 confirmed `torch 2.13.0+cpu` and `sentence-transformers 5.6.1` work with Python 3.14.6 on Windows x64. CPU-only builds are sufficient for the bge-m3 embedding model. No version downgrade required.
 
 ## bge-m3 memory requirements on KVM 1 VPS
 

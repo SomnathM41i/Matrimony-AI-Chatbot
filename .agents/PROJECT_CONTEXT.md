@@ -27,10 +27,11 @@
 ## Important Workflows
 
 - Chat: `/api/chat` authenticates, validates a message, calls `ChatService`, stores user/assistant messages, commits, and returns usage.
-- AI classification: intent model decides between general and database paths.
-- Database path: model creates safe SELECT SQL, server validates and executes it against MySQL, then a model formats results.
+- **Current (Hybrid RAG) database path**: `extraction_service.py` extracts structured JSON filters (no SQL) → `query_builder.py` builds parameterized SQL → MySQL exact search → Qdrant vector search fallback on zero results → grounded generation.
+- **Legacy database path** (CHAT_ENGINE=legacy): intent classifier decides general vs database → LLM generates SQL → `validate_select_sql` checks it → executes against MySQL → LLM formats results.
 - Authentication: login/register set access and refresh cookies; `/api/auth/refresh` rotates both tokens.
 - Frontend protected routes live under `/app`; admin routes live under `/admin`.
+- Greeting shortcut: simple greetings ("hi", "hello", "namaste") are handled without any LLM call.
 
 ## Database Context
 
@@ -103,7 +104,7 @@
 - On 2026-07-26 Hybrid RAG pipeline implemented: structured extraction + Python query builder + Qdrant vector search fallback.
 - On 2026-07-27 anti-hallucination hardening: pre-formatting guard for unavailable personal attributes, strengthened FORMAT_SYSTEM_PROMPT and BASE_SYSTEM_PROMPT.
 - On 2026-07-27 timeout fixes: frontend API timeout increased 30s→120s, greeting shortcut added.
-- On 2026-07-27 legacy modules removed: `intent_llm.py`, `intent_detector.py`, `sql_generator.py` deleted.
+- On 2026-07-27 legacy modules removed: `intent_llm.py`, `intent_detector.py` deleted entirely. `sql_generator.py` — only `generate_sql` deleted; `validate_select_sql` preserved in `db_query_service.py`.
 - All project caches cleaned: `__pycache__`, `.pytest_cache`, `frontend/dist`, `node_modules/.vite` removed.
 - Application startup now seeds Groq provider/models, five task routes, the Free/Basic/Silver catalogue, and a manual verification gateway only when those records do not already exist.
 - Current paid checkout state is manual administrator verification; no external gateway adapter is installed.

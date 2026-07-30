@@ -54,12 +54,14 @@ class AuthService:
         user = await self.user_repo.get_by_id(int(user_id))
         if not user or not user.is_active:
             raise ValueError("User not found or inactive")
-        if payload.get("token_version", 0) != user.token_version:
-            await self.user_repo.update(user, token_version=user.token_version + 1)
+        expected_version = payload.get("token_version", 0)
+        if expected_version != user.token_version:
             raise ValueError("Refresh token has been invalidated")
-        new_version = user.token_version + 1
-        user = await self.user_repo.update(user, token_version=new_version)
+        updated = await self.user_repo.increment_token_version(user.id, expected_version)
+        if not updated:
+            raise ValueError("Refresh token has been invalidated")
+        user = await self.user_repo.get_by_id(user.id)
         return {
-            "access_token": create_access_token({"sub": str(user.id)}, token_version=new_version),
-            "refresh_token": create_refresh_token({"sub": str(user.id)}, token_version=new_version),
+            "access_token": create_access_token({"sub": str(user.id)}, token_version=user.token_version),
+            "refresh_token": create_refresh_token({"sub": str(user.id)}, token_version=user.token_version),
         }

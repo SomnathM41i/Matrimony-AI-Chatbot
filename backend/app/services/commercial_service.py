@@ -118,9 +118,6 @@ async def seed_commercial_defaults(db: AsyncSession) -> None:
         "intent_detection", "general_chat", "sql_generation",
         "database_formatting", "database_notice",
     ]
-    existing_routes = (await db.execute(select(AITaskRoute))).scalars().all()
-    for route in existing_routes:
-        await db.execute(delete(AITaskTarget).where(AITaskTarget.route_id == route.id))
 
     for task_key in TASK_KEYS:
         route = (await db.execute(select(AITaskRoute).where(AITaskRoute.task_key == task_key))).scalar_one_or_none()
@@ -128,7 +125,14 @@ async def seed_commercial_defaults(db: AsyncSession) -> None:
             route = AITaskRoute(task_key=task_key, enabled=True)
             db.add(route)
             await db.flush()
-        db.add(AITaskTarget(route_id=route.id, model_id=active_model.id, priority=1, enabled=True))
+        existing = (await db.execute(
+            select(AITaskTarget).where(
+                AITaskTarget.route_id == route.id,
+                AITaskTarget.model_id == active_model.id,
+            )
+        )).scalar_one_or_none()
+        if not existing:
+            db.add(AITaskTarget(route_id=route.id, model_id=active_model.id, priority=1, enabled=True))
 
     await db.commit()
 

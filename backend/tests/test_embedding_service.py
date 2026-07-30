@@ -1,5 +1,6 @@
 import unittest
 from unittest.mock import patch, MagicMock
+from unittest import IsolatedAsyncioTestCase
 import numpy as np
 
 from app.services.embedding_service import (
@@ -53,44 +54,44 @@ class BuildProfileDocumentTests(unittest.TestCase):
         self.assertIn(". ", doc)
 
 
-class EmbedTextTests(unittest.TestCase):
+class EmbedTextTests(unittest.IsolatedAsyncioTestCase):
     @patch("app.services.embedding_service.get_embedding_model")
-    def test_embed_text_returns_float_list(self, mock_get_model):
+    async def test_embed_text_returns_float_list(self, mock_get_model):
         mock_model = MagicMock()
         mock_model.encode.return_value = np.array([0.1, 0.2, 0.3])
         mock_get_model.return_value = mock_model
 
-        result = embed_text("test text")
+        result = await embed_text("test text")
         self.assertEqual(result, [0.1, 0.2, 0.3])
         mock_model.encode.assert_called_once_with("test text", normalize_embeddings=True)
 
     @patch("app.services.embedding_service.get_embedding_model")
-    def test_embed_text_with_custom_model(self, mock_get_model):
+    async def test_embed_text_with_custom_model(self, mock_get_model):
         mock_model = MagicMock()
         mock_model.encode.return_value = np.array([0.5])
         mock_get_model.return_value = mock_model
 
-        result = embed_text("hello", model_name="custom-model")
+        result = await embed_text("hello", model_name="custom-model")
         mock_get_model.assert_called_once_with("custom-model")
 
 
-class EmbedBatchTests(unittest.TestCase):
+class EmbedBatchTests(unittest.IsolatedAsyncioTestCase):
     @patch("app.services.embedding_service.get_embedding_model")
-    def test_embed_batch_returns_list_of_lists(self, mock_get_model):
+    async def test_embed_batch_returns_list_of_lists(self, mock_get_model):
         mock_model = MagicMock()
         mock_model.encode.return_value = np.array([
             [0.1, 0.2], [0.3, 0.4],
         ])
         mock_get_model.return_value = mock_model
 
-        result = embed_batch(["text1", "text2"])
+        result = await embed_batch(["text1", "text2"])
         self.assertEqual(len(result), 2)
         self.assertEqual(result[0], [0.1, 0.2])
         self.assertEqual(result[1], [0.3, 0.4])
 
     @patch("app.services.embedding_service.get_embedding_model")
-    def test_empty_batch_returns_empty_list(self, mock_get_model):
-        result = embed_batch([])
+    async def test_empty_batch_returns_empty_list(self, mock_get_model):
+        result = await embed_batch([])
         self.assertEqual(result, [])
         mock_get_model.assert_not_called()
 

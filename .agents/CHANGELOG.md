@@ -1,5 +1,101 @@
 # Changelog
 
+## 2026-07-29 — Bug Fix Phases 1-3 (Security, Correctness, Robustness)
+
+### Phase 1 — Security & Critical Bugs
+- Added `import json` to `llm_client.py` — fixed `stream_groq()` NameError crash.
+- Replaced Python `hash()` with `hashlib.md5()` in `vector_service.py` — deterministic Qdrant point IDs across restarts.
+- Fixed `auth_service.py` token invalidation on failed refresh — removed spurious `token_version` increment.
+- Fixed `refresh_token` race condition — added atomic conditional `UPDATE` with `increment_token_version()` in `user_repository.py`.
+- Confirmed `.env` already gitignored and not tracked.
+
+### Phase 2 — Code Correctness
+- Fixed Marathi city regex in `extraction_service.py` — prepositions come AFTER place names in Marathi; split into English and Marathi patterns.
+- Fixed `embedding_service.py` event loop blocking — wrapped `SentenceTransformer.encode()` in `asyncio.to_thread()`.
+- Fixed destructive seed in `commercial_service.py` — skip `AITaskTarget` deletion; create only missing targets.
+- Fixed circular imports — extracted `limiter` to `app/core/limiter.py`.
+- Fixed broken test import in `test_chat_error_messages.py`.
+- Fixed timezone-naive datetime in `auth.py`.
+
+### Phase 3 — Robustness & Concurrency
+- Added `threading.Lock()` with double-checked locking for thread-safe MySQL pool init.
+- Fixed `get_client()` singleton — now recreates client when host/port changes.
+- Fixed `_load_history()` early break — now scans all messages for metadata.
+- Replaced hardcoded `VECTOR_SIZE=1024` with dynamic `_get_vector_size()` from model config.
+- Added `\bwith\b` to subquery regex to block CTE bypass.
+- Replaced bare `except: pass` with `logger.debug()` for ALTER TABLE failures.
+
+### Files Modified
+- `backend/app/ai/llm_client.py`, `backend/app/services/vector_service.py`, `backend/app/services/auth_service.py`, `backend/app/repositories/user_repository.py`, `backend/app/services/extraction_service.py`, `backend/app/services/embedding_service.py`, `backend/app/services/chat_service.py`, `backend/app/services/db_query_service.py`, `backend/app/services/commercial_service.py`, `backend/app/services/indexing_service.py`, `backend/app/core/auth.py`, `backend/app/core/limiter.py` (new), `backend/app/main.py`, `backend/app/api/auth_routes.py`, `backend/app/api/chat_routes.py`, `backend/app/database.py`, `backend/tests/test_extraction_service.py`, `backend/tests/test_embedding_service.py`, `backend/tests/test_chat_error_messages.py`, `backend/tests/test_vector_service.py`, `.agents/TODO.md`, `.agents/CHANGELOG.md`
+
+### Validation
+- All modified Python files compile successfully.
+
+## 2026-07-27 — Anti-Hallucination Hardening & Timeout Fixes
+
+### Anti-Hallucination Hardening
+- Added pre-formatting guard in `db_query_service.py` — blocks LLM formatting for questions about unavailable personal attributes (favorite food, appetite, eating habits, etc.).
+- Strengthened `FORMAT_SYSTEM_PROMPT` with explicit anti-hallucination rules and examples of forbidden fabrications.
+- Strengthened `BASE_SYSTEM_PROMPT` with "not available in the database" instruction.
+
+### Timeout Fixes
+- Increased frontend API timeout from 30s to 120s (`apiClient.js`).
+- Added greeting shortcut in `chat_service.py` — handles "hello"/"hi"/"namaste" etc. without calling any LLM.
+
+### Code Cleanup
+- Removed stale `myvivahai.md` session log from project root.
+- Removed all `__pycache__` directories, `.pytest_cache`, `frontend/dist`, `frontend/node_modules/.vite`.
+
+### Files Changed
+- `backend/app/services/db_query_service.py`, `backend/app/services/chat_service.py`, `backend/app/core/prompts.py`, `frontend/src/services/apiClient.js`
+- Tests updated accordingly.
+
+### Validation
+- All 29 backend tests passing.
+
+## 2026-07-26 — Hybrid RAG Pipeline (Phases 1-5)
+
+### Phase 1 — Hallucination Fixes (Critical)
+- Removed contradictory "NEVER say you don't have access" directive from `BASE_SYSTEM_PROMPT`.
+- Replaced "Sneha Patil" / "Priya Sharma" example names with obfuscated placeholders.
+- Added `_is_profile_query()` safety gate in `chat_service.py` — profile-keyword queries in general path return "No matching profiles found" without LLM call.
+- Added `CHAT_ENGINE` feature flag (`hybrid_rag` / `legacy`) to `config.py`.
+
+### Phase 2 — Structured Extraction + Query Builder
+- Added `STRUCTURED_EXTRACTION_PROMPT` to `prompts.py` — LLM outputs only JSON filters, never SQL.
+- Created `extraction_service.py` — calls LLM with extraction prompt, parses JSON, validates filters, includes keyword fallback.
+- Created `query_builder.py` — Python parameterized SQL builder from structured filters. No LLM involvement.
+- Updated `db_query_service.py` — added `answer_database_question_hybrid()` using extraction + query builder.
+
+### Phase 3 — Embedding + Vector Search
+- Installed dependencies: `qdrant-client`, `sentence-transformers`, `torch`.
+- Created `embedding_service.py` — BAAI/bge-m3 local embedding model (1024-d, lazy-loaded singleton).
+- Created `vector_service.py` — Qdrant client wrapper with metadata filtering (Gender, Caste, City, Religion, Maritalstatus, Age).
+- Created `indexing_service.py` — Full re-index pipeline with batch upserts of 100.
+
+### Phase 4 — Schema Discovery + Dynamic Examples + Auto-Index
+- Created `schema_discovery.py` — auto-discovers tables, columns, distinct values from MySQL.
+- Created `example_generator.py` — generates multilingual example queries from real data.
+- Auto-reindex on startup in `main.py` lifespan.
+- Added `docs/qdrant-setup.md`.
+
+### Phase 5 — Integration + Conversation Memory
+- `answer_database_question_hybrid()` with MySQL → Qdrant vector search fallback.
+- Conversation memory: filter accumulation + detail context across turns.
+- `profile_detail` intent for family/education/horoscope/income etc.
+- Multilingual responses via `format_db_notice()`.
+- Legacy modules (`intent_llm.py`, `intent_detector.py`) removed; `sql_generator.py` partially removed (only `generate_sql` deleted; `validate_select_sql` kept in `db_query_service.py`).
+
+### Files Created
+- `backend/app/services/extraction_service.py`, `query_builder.py`, `embedding_service.py`, `vector_service.py`, `indexing_service.py`, `schema_discovery.py`, `example_generator.py`
+- `backend/docs/qdrant-setup.md`
+
+### Files Modified
+- `backend/app/core/prompts.py`, `backend/app/services/db_query_service.py`, `backend/app/services/chat_service.py`, `backend/app/config.py`, `backend/requirements.txt`
+
+### Validation
+- 29/29 backend tests passing.
+
 ## 2026-07-23 02:20 — Dynamic Commercial AI Module
 
 ### Request
