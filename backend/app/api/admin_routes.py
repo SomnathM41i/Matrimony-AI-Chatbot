@@ -12,6 +12,11 @@ from app.services.db_query_service import safe_query, check_db_connection, get_d
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 
+def _aware(value: datetime) -> datetime:
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
+
+
 # ─── Dashboard Stats ───────────────────────────────────────
 
 @router.get("/stats")
@@ -51,7 +56,7 @@ async def list_users(
                 "role": u.role,
                 "is_active": u.is_active,
                 "is_verified": u.is_verified,
-                "is_online": bool(u.last_activity and (datetime.now(timezone.utc).replace(tzinfo=None) - u.last_activity) < timedelta(minutes=5)),
+                "is_online": bool(u.last_activity and (datetime.now(timezone.utc) - _aware(u.last_activity)) < timedelta(minutes=5)),
                 "conversation_count": 0,
                 "last_login": u.last_login.isoformat() if u.last_login else None,
                 "created_at": u.created_at.isoformat() if u.created_at else None,
