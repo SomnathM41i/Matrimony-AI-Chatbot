@@ -1,5 +1,7 @@
 import json
 import re
+import math
+import numpy as np
 from app.config import settings
 from app.core.prompts import STRUCTURED_EXTRACTION_PROMPT
 from app.ai.llm_client import call_groq
@@ -63,6 +65,120 @@ DETAIL_KEYWORDS = {
     "biodata", "employed", "height", "weight", "same",
 }
 
+class TFIDFRouter:
+    def __init__(self):
+        self.classes = {
+            'database': [
+                'show me female profiles in Pune',
+                'search for a Maratha groom',
+                'find active members of mali caste',
+                'list brides who are never married',
+                'looking for a match in Mumbai',
+                'मला मुलगी दाखवा',
+                'लड़की ढूंढो',
+                'show me 5 profiles',
+                'what is her education',
+                'tell me about her family background',
+                'show her photo and contact number',
+                'is she working as a software engineer',
+                'tell me about the second one',
+                'is the doctor employed',
+                'show biodata of the CA girl',
+                'तिचे शिक्षण काय आहे',
+                'उसकी कुंडली दिखाओ',
+                'tell me about her',
+                'is she working',
+                'what is her age',
+                'where does she live',
+                'is he married or divorced',
+                'what is her height and weight',
+                'does she smoke or drink',
+                'her mobile number and email',
+                'biodata of same girl',
+                'only unmarried brides',
+            ],
+            'general': [
+                'how can I find a good partner on myvivahai',
+                'what are your membership plans and pricing',
+                'write a congratulatory note',
+                'give me some relationship advice',
+                'tell me about your platform history',
+                'what is 2+2',
+                'how are you',
+                'hi', 'hello', 'hey', 'namaste', 'नमस्कार', 'नमस्ते', 'हॅलो', 'namaskar',
+                'yes', 'no', 'thanks', 'thank you', 'ok', 'okay', 'bye', 'goodbye',
+                'fine', 'sure', 'not really', 'आभार', 'धन्यवाद', 'ठीक आहे',
+                'who created you', 'what is your name', 'tell me a joke'
+            ]
+        }
+        self._build_vocabulary()
+        self._compute_idf()
+        self._vectorize_classes()
+
+    def _tokenize(self, text):
+        text = text.lower().strip()
+        words = re.findall(r'[a-z\u0900-\u097f0-9]+', text)
+        return words
+
+    def _build_vocabulary(self):
+        self.vocab = set()
+        self.all_docs = []
+        self.doc_classes = []
+        for cls, docs in self.classes.items():
+            for doc in docs:
+                tokens = self._tokenize(doc)
+                self.vocab.update(tokens)
+                self.all_docs.append(tokens)
+                self.doc_classes.append(cls)
+        self.vocab = sorted(list(self.vocab))
+        self.vocab_idx = {tok: idx for idx, tok in enumerate(self.vocab)}
+
+    def _compute_idf(self):
+        N = len(self.all_docs)
+        self.idf = {}
+        for term in self.vocab:
+            df = sum(1 for doc in self.all_docs if term in doc)
+            self.idf[term] = math.log((1 + N) / (1 + df)) + 1
+
+    def _vectorize(self, tokens):
+        vec = np.zeros(len(self.vocab))
+        if not tokens:
+            return vec
+        token_counts = {}
+        for tok in tokens:
+            if tok in self.vocab_idx:
+                token_counts[tok] = token_counts.get(tok, 0) + 1
+        for tok, count in token_counts.items():
+            idx = self.vocab_idx[tok]
+            vec[idx] = (count / len(tokens)) * self.idf[tok]
+        return vec
+
+    def _vectorize_classes(self):
+        self.class_centroids = {}
+        for cls in self.classes.keys():
+            vectors = []
+            for doc, d_cls in zip(self.all_docs, self.doc_classes):
+                if d_cls == cls:
+                    vectors.append(self._vectorize(doc))
+            self.class_centroids[cls] = np.mean(vectors, axis=0)
+
+    def route(self, message):
+        tokens = self._tokenize(message)
+        if not tokens:
+            return 'general', 0.0
+        vec = self._vectorize(tokens)
+        similarities = {}
+        for cls, centroid in self.class_centroids.items():
+            dot = np.dot(vec, centroid)
+            norm_vec = np.linalg.norm(vec)
+            norm_cen = np.linalg.norm(centroid)
+            similarities[cls] = float(dot / (norm_vec * norm_cen)) if norm_vec > 0 and norm_cen > 0 else 0.0
+        best_cls = max(similarities, key=similarities.get)
+        return best_cls, similarities[best_cls]
+
+# Instantiate the single, global TF-IDF Router singleton at module load.
+router = TFIDFRouter()
+
 VALID_FIELDS = {
     "all", "education", "career", "income", "family",
     "horoscope", "manglik", "gotra", "location",
@@ -121,10 +237,19 @@ def is_likely_profile_message(message: str) -> bool:
     has_detail = any(_word_in(msg, kw) for kw in DETAIL_KEYWORDS)
     return has_profile or has_community or has_search_verb or has_detail
 
+
 def _is_detail_query(message: str) -> bool:
     msg = message.lower()
     detail_indicators = 0
-    for kw in DETAIL_KEYWORDS:
+    keywords = {
+        "her", "his", "she", "he", "details", "education", "family", "horoscope", "income", "career",
+        "photo", "mobile", "contact", "age", "address", "manglik", "gotra", "gothra", "gotram",
+        "father", "mother", "brother", "sister", "parent", "occupation", "job", "salary", "earning",
+        "शिक्षण", "कुटुंब", "भविष्य", "कुंडली", "शिक्षा", "परिवार", "कुंडली", "biodata", "employed",
+        "height", "weight", "same", "uski", "unki", "unka", "uska", "meri", "teri",
+        "kundali", "kundli", "dikhao", "dikha", "dikhaye",
+    }
+    for kw in keywords:
         if _word_in(msg, kw):
             detail_indicators += 1
     if msg.strip() in ("her", "his", "she", "him", "her profile", "his profile"):
@@ -157,10 +282,14 @@ async def extract_search_params(
     if msg_clean in FAST_PATH_GENERAL:
         return {"intent": "general", "filters": {}, "limit": 10, "selected_index": None, "selected_reference": None}
 
-    # Tier 2: Zero-Memory Lexical & Keyword Routing (Bypasses LLM for unrelated general topics)
-    if not is_likely_profile_message(message) and not _is_detail_query(message):
-        # High confidence that this is completely unrelated general conversation - bypass LLM completely!
-        return {"intent": "general", "filters": {}, "limit": 10, "selected_index": None, "selected_reference": None}
+    # Tier 2: Zero-Memory Local TF-IDF Centroid Similarity Router
+    try:
+        best_cls, score = router.route(message)
+        logger.info(f"TF-IDF Local Router classified: '{message}' -> '{best_cls}' (Similarity: {score:.3f})")
+        if best_cls == 'general':
+            return {"intent": "general", "filters": {}, "limit": 10, "selected_index": None, "selected_reference": None}
+    except Exception as e:
+        logger.warning(f"TF-IDF routing exception: {e}")
 
     # Tier 3: External LLM Structured Parameter Extraction
     dynamic_examples = generate_examples()
