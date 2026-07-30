@@ -464,6 +464,51 @@ async def _handle_profile_detail(
     }
 
 
+def resolve_contextual_profile(
+    selected_index: int | None,
+    selected_reference: str | None,
+    candidates: list[dict] | None,
+    current_selected: dict | None
+) -> tuple[dict | None, str | None]:
+    if not candidates:
+        return current_selected, None
+
+    # 1. Resolve by index
+    if selected_index is not None:
+        try:
+            idx = int(selected_index) - 1
+            if 0 <= idx < len(candidates):
+                return candidates[idx], None
+        except (ValueError, TypeError):
+            pass
+
+    # 2. Resolve by descriptive reference (Semantic reference resolution)
+    if selected_reference:
+        ref = str(selected_reference).lower().strip()
+        matches = []
+        for cand in candidates:
+            match_found = False
+            for key in ["Name", "Occupation", "Education", "City", "Maritalstatus", "Religion", "Caste"]:
+                val = cand.get(key)
+                if val and ref in str(val).lower():
+                    match_found = True
+                    break
+            if match_found:
+                matches.append(cand)
+
+        # Confidence-based Decision Making
+        if len(matches) == 1:
+            # Exactly one matches -> HIGH confidence, proceed automatically!
+            return matches[0], None
+        elif len(matches) > 1:
+            # Multiple matches -> LOW confidence, ask for clarification.
+            names = ", ".join([f"'{c.get('Name')}'" for c in matches if c.get("Name")])
+            clarification = f"I found multiple matches for '{selected_reference}': {names}. Which one did you mean?"
+            return None, clarification
+
+    return current_selected, None
+
+
 async def answer_database_question_hybrid(
     message: str,
     history: list[dict] | None = None,
@@ -475,12 +520,33 @@ async def answer_database_question_hybrid(
     ctx = conversation_context or {}
     accumulated_filters = ctx.get("accumulated_filters")
     selected_profile = ctx.get("selected_profile")
+    candidates = ctx.get("profile_candidates")
 
     extraction = await extract_search_params(message, history=history, db=db)
     intent = extraction.get("intent", "general")
 
     if intent == "profile_detail":
-        return await _handle_profile_detail(
+        selected_index = extraction.get("selected_index")
+        selected_reference = extraction.get("selected_reference")
+
+        resolved, clarification = resolve_contextual_profile(
+            selected_index, selected_reference, candidates, selected_profile
+        )
+        if clarification:
+            return {
+                "content": clarification,
+                "is_profile_search": False,
+                "usage": {},
+                "events": [],
+                "metadata": {
+                    "selected_profile": selected_profile,
+                    "accumulated_filters": accumulated_filters,
+                    "profile_candidates": candidates,
+                }
+            }
+
+        selected_profile = resolved
+        result = await _handle_profile_detail(
             message,
             fields=extraction.get("fields"),
             limit=extraction.get("limit", 1),
@@ -488,6 +554,9 @@ async def answer_database_question_hybrid(
             db=db,
             selected_profile=selected_profile,
         )
+        if result.get("metadata"):
+            result["metadata"]["profile_candidates"] = candidates
+        return result
 
     if intent != "profile_search":
         return {"content": None, "is_profile_search": False, "usage": {}, "events": [], "metadata": None}

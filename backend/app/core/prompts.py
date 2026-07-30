@@ -471,12 +471,14 @@ JSON schema:
     "height_max": null or integer
   },
   "fields": ["all"] or list of specific fields,
-  "limit": 10
+  "limit": 10,
+  "selected_index": null or integer,
+  "selected_reference": null or string
 }
 
 INTENTS:
 - profile_search: User wants to FIND/NEW profiles matching criteria. Extract filters. Set fields to ["search"].
-- profile_detail: User wants DETAILS about an ALREADY SHOWN profile (or their own profile). Set fields to specific field group(s) based on what the user asks about.
+- profile_detail: User wants DETAILS about an ALREADY SHOWN profile (or their own profile). Set fields to specific field group(s) based on what the user asks about. Also extract "selected_index" (e.g. 1 for first, 2 for second, etc.) if they refer to a profile list index, or "selected_reference" (e.g., "doctor", "CA", "software engineer", "Pune", "widow") if they use a descriptive follow-up reference to target a specific profile shown previously.
 - general: Not profile-related at all.
 
 FIELD GROUP MAPPING (for profile_detail) — use your language understanding to match user queries to the correct field group(s):
@@ -495,19 +497,23 @@ FIELD GROUP MAPPING (for profile_detail) — use your language understanding to 
 INDIVIDUAL COLUMN NAMES (for very specific requests): name, age, gender, maritalstatus, education, educationdetails, occupation, employedin, annualincome, religion, caste, subcaste, gothram, gotra, manglik, star, moonsign, height, weight, bloodgroup, bodytype, complexion, diet, smoke, drink, hobbies, interests, city, dist, state, country, residencystatus, familyvalues, familytype, familystatus, fathername, mothersname, fathersoccupation, mothersoccupation, noofbrothers, noofsisters, birthplace, birthtime, nakshatra, charan, rasi, gan, nadi, photo, mobile, language
 
 EXAMPLES for profile_detail:
-- "tell me about her father" → fields: ["family"]
-- "what is her education" → fields: ["education"]
-- "show me her horoscope" → fields: ["horoscope"]
-- "tell me about gauri" → fields: ["all"] (no specific area mentioned)
-- "her salary" → fields: ["income"]
-- "what does she do" → fields: ["career"]
-- "her photo" → fields: ["photo"]
-- "tell me about her family background" → fields: ["family"]
-- "what is her height and weight" → fields: ["physical"]
-- "does she smoke" → fields: ["lifestyle"]
-- "her mobile number" → fields: ["contact"]
-- "her education and family" → fields: ["education", "family"]
-- "she is manglik or not" → fields: ["horoscope"]
+- "tell me about the second one" → intent: "profile_detail", fields: ["all"], selected_index: 2
+- "what is the education of the CA girl?" → intent: "profile_detail", fields: ["education"], selected_reference: "CA"
+- "is the doctor working?" → intent: "profile_detail", fields: ["career"], selected_reference: "doctor"
+- "show biodata of the girl from Pune" → intent: "profile_detail", fields: ["all"], selected_reference: "Pune"
+- "tell me about her father" → intent: "profile_detail", fields: ["family"]
+- "what is her education" → intent: "profile_detail", fields: ["education"]
+- "show me her horoscope" → intent: "profile_detail", fields: ["horoscope"]
+- "tell me about gauri" → intent: "profile_detail", fields: ["all"], selected_name: "gauri"
+- "her salary" → intent: "profile_detail", fields: ["income"]
+- "what does she do" → intent: "profile_detail", fields: ["career"]
+- "her photo" → intent: "profile_detail", fields: ["photo"]
+- "tell me about her family background" → intent: "profile_detail", fields: ["family"]
+- "what is her height and weight" → intent: "profile_detail", fields: ["physical"]
+- "does she smoke" → intent: "profile_detail", fields: ["lifestyle"]
+- "her mobile number" → intent: "profile_detail", fields: ["contact"]
+- "her education and family" → intent: "profile_detail", fields: ["education", "family"]
+- "she is manglik or not" → intent: "profile_detail", fields: ["horoscope"]
 
 DETAIL QUERY TRIGGERS (profile_detail intent):
 - "tell me about her/him/this profile"
