@@ -8,7 +8,6 @@ from app.core.logger import logger
 from app.services.example_generator import generate_examples
 from app.services.schema_discovery import build_schema_context
 
-
 DEFAULT_FILTERS = {
     "gender": None,
     "caste": None,
@@ -43,6 +42,7 @@ PROFILE_KEYWORDS = {
     "first", "second", "third", "last", "next", "previous",
     "kundali", "kundli", "dikhao", "dikha", "dikhaye",
     "uski", "unki", "unka", "uska", "meri", "teri",
+    "1st", "2nd", "3rd", "match", "find", "looking", "require",
 }
 
 DETAIL_KEYWORDS = {
@@ -60,6 +60,7 @@ DETAIL_KEYWORDS = {
     "kundali", "kundli", "dikhao", "dikha", "dikhaye",
     "kya", "kaun", "kaisa", "kaise",
     "kitna", "kitni", "kahan", "kab",
+    "biodata", "employed", "height", "weight", "same",
 }
 
 VALID_FIELDS = {
@@ -68,14 +69,12 @@ VALID_FIELDS = {
     "physical", "lifestyle", "photo", "contact",
 }
 
-
 def clean_json(text: str) -> str:
     text = (text or "").strip()
     text = re.sub(r'^```(?:json)?\s*', '', text, flags=re.IGNORECASE)
     text = re.sub(r'\s*```$', '', text)
     match = re.search(r'\{.*\}', text, flags=re.DOTALL)
     return match.group(0) if match else text
-
 
 def validate_filters(filters: dict) -> dict:
     clean = {}
@@ -93,13 +92,11 @@ def validate_filters(filters: dict) -> dict:
             clean[key] = None
     return clean
 
-
 def validate_fields(fields: list | None) -> list[str] | None:
     if not fields:
         return None
     valid = [f for f in fields if isinstance(f, str) and f.lower() in VALID_FIELDS]
     return [f.lower() for f in valid] if valid else None
-
 
 def _word_in(text: str, word: str) -> bool:
     return bool(re.search(r'(?<!\w)' + re.escape(word) + r'(?!\w)', text))
@@ -118,45 +115,54 @@ def is_likely_profile_message(message: str) -> bool:
         _word_in(msg, w) for w in [
             "show", "search", "find", "list", "need", "want", "looking",
             "दाखवा", "शोधा", "हवी", "हवे", "पाहिजे",
-            "dikhao", "dikha", "dikhaye", "dikhao", "बताओ", "ढूंढो",
+            "dikhao", "dikha", "dikhaye", "बताओ", "ढूंढो",
         ]
     )
     has_detail = any(_word_in(msg, kw) for kw in DETAIL_KEYWORDS)
     return has_profile or has_community or has_search_verb or has_detail
 
-
 def _is_detail_query(message: str) -> bool:
     msg = message.lower()
     detail_indicators = 0
-
     for kw in DETAIL_KEYWORDS:
         if _word_in(msg, kw):
             detail_indicators += 1
-
     if msg.strip() in ("her", "his", "she", "him", "her profile", "his profile"):
         return True
-
     first_word = msg.split()[0] if msg.split() else ""
     if first_word in ("her", "his", "she", "he", "this", "that"):
         detail_indicators += 1
         if msg.strip() == first_word:
             return True
-
     positional = re.search(r'\b(first|second|third|last|next|previous|1st|2nd|3rd)\b', msg)
     if positional:
         detail_indicators += 1
-
     return detail_indicators >= 1
-
 
 async def extract_search_params(
     message: str,
     history: list[dict] | None = None,
     db=None,
 ) -> dict:
-    if not is_likely_profile_message(message):
-        return {"intent": "general", "filters": {}, "limit": 10}
+    msg_clean = message.lower().strip().rstrip(".!?,")
+    
+    # Tier 1: Heuristic Fast-Path (Greetings & Trivial conversation)
+    FAST_PATH_GENERAL = {
+        "hi", "hello", "hey", "namaste", "नमस्कार", "नमस्ते", "हॅलो", "namaskar",
+        "good morning", "good afternoon", "good evening",
+        "yes", "no", "thanks", "thank you", "ok", "okay", "bye", "goodbye",
+        "fine", "sure", "not really", "आभार", "धन्यवाद", "ठीक आहे", "thank",
+        "great", "awesome", "cool", "perfect"
+    }
+    if msg_clean in FAST_PATH_GENERAL:
+        return {"intent": "general", "filters": {}, "limit": 10, "selected_index": None, "selected_reference": None}
 
+    # Tier 2: Zero-Memory Lexical & Keyword Routing (Bypasses LLM for unrelated general topics)
+    if not is_likely_profile_message(message) and not _is_detail_query(message):
+        # High confidence that this is completely unrelated general conversation - bypass LLM completely!
+        return {"intent": "general", "filters": {}, "limit": 10, "selected_index": None, "selected_reference": None}
+
+    # Tier 3: External LLM Structured Parameter Extraction
     dynamic_examples = generate_examples()
     schema_ctx = build_schema_context()
     full_prompt = STRUCTURED_EXTRACTION_PROMPT + "\n\n### LIVE SCHEMA CONTEXT ###\n" + schema_ctx + "\n\n" + dynamic_examples
@@ -182,12 +188,18 @@ async def extract_search_params(
     except Exception as e:
         logger.warning(f"Extraction failed, using keyword fallback: {e}")
         if _is_detail_query(message):
-            return {"intent": "profile_detail", "filters": {}, "fields": ["all"], "limit": 1}
-        return {"intent": "profile_search", "filters": _keyword_fallback(message), "limit": 10}
+            return {"intent": "profile_detail", "filters": {}, "fields": ["all"], "limit": 1, "selected_index": None, "selected_reference": None}
+        return {"intent": "profile_search", "filters": _keyword_fallback(message), "limit": 10, "selected_index": None, "selected_reference": None}
 
     intent = parsed.get("intent", "profile_search")
     if intent not in ("profile_search", "profile_detail"):
-        return {"intent": "general", "filters": {}, "limit": 10}
+        return {
+            "intent": "general",
+            "filters": {},
+            "limit": 10,
+            "selected_index": parsed.get("selected_index"),
+            "selected_reference": parsed.get("selected_reference"),
+        }
 
     raw_filters = parsed.get("filters", {})
     filters = validate_filters(raw_filters)
@@ -199,8 +211,14 @@ async def extract_search_params(
     if limit > 50:
         limit = 50
 
-    return {"intent": intent, "filters": filters, "fields": fields, "limit": limit}
-
+    return {
+        "intent": intent,
+        "filters": filters,
+        "fields": fields,
+        "limit": limit,
+        "selected_index": parsed.get("selected_index"),
+        "selected_reference": parsed.get("selected_reference"),
+    }
 
 def _keyword_fallback(message: str) -> dict:
     msg = message.lower()

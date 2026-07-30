@@ -102,6 +102,51 @@ def _is_greeting_only(message: str) -> str | None:
     return None
 
 
+def resolve_contextual_profile(
+    selected_index: int | None,
+    selected_reference: str | None,
+    candidates: list[dict] | None,
+    current_selected: dict | None
+) -> tuple[dict | None, str | None]:
+    if not candidates:
+        return current_selected, None
+
+    # 1. Resolve by index
+    if selected_index is not None:
+        try:
+            idx = int(selected_index) - 1
+            if 0 <= idx < len(candidates):
+                return candidates[idx], None
+        except (ValueError, TypeError):
+            pass
+
+    # 2. Resolve by descriptive reference (Semantic reference resolution)
+    if selected_reference:
+        ref = str(selected_reference).lower().strip()
+        matches = []
+        for cand in candidates:
+            match_found = False
+            for key in ["Name", "Occupation", "Education", "City", "Maritalstatus", "Religion", "Caste"]:
+                val = cand.get(key)
+                if val and ref in str(val).lower():
+                    match_found = True
+                    break
+            if match_found:
+                matches.append(cand)
+
+        # Confidence-based Decision Making
+        if len(matches) == 1:
+            # Exactly one matches -> HIGH confidence, proceed automatically!
+            return matches[0], None
+        elif len(matches) > 1:
+            # Multiple matches -> LOW confidence, ask for clarification.
+            names = ", ".join([f"'{c.get('Name')}'" for c in matches if c.get("Name")])
+            clarification = f"I found multiple matches for '{selected_reference}': {names}. Which one did you mean?"
+            return None, clarification
+
+    return current_selected, None
+
+
 class ChatService:
     def __init__(self, db: AsyncSession):
         self.db = db
@@ -114,6 +159,7 @@ class ChatService:
         selected_profile = None
         accumulated_filters = None
         cached_profile_data = None
+        profile_candidates = None
         for m in reversed(msgs):
             if not m.metadata_json:
                 continue
@@ -125,6 +171,8 @@ class ChatService:
                     accumulated_filters = metadata.get("accumulated_filters")
                 if cached_profile_data is None:
                     cached_profile_data = metadata.get("cached_profile_data")
+                if profile_candidates is None:
+                    profile_candidates = metadata.get("profile_candidates")
             except (TypeError, ValueError):
                 continue
 
@@ -141,7 +189,12 @@ class ChatService:
 
         for m in msgs[-settings.CHAT_HISTORY_LIMIT:]:
             history.append({"role": m.role, "content": m.content})
-        return history, {"accumulated_filters": accumulated_filters, "selected_profile": selected_profile, "cached_profile_data": cached_profile_data}
+        return history, {
+            "accumulated_filters": accumulated_filters,
+            "selected_profile": selected_profile,
+            "cached_profile_data": cached_profile_data,
+            "profile_candidates": profile_candidates
+        }
 
     async def stream_process_message(
         self, user_id: int, message: str, conversation_id: int | None = None
@@ -210,62 +263,80 @@ class ChatService:
                 ctx = conversation_context or {}
                 accumulated_filters = ctx.get("accumulated_filters")
                 selected_profile = ctx.get("selected_profile")
+                candidates = ctx.get("profile_candidates")
 
                 if intent == "profile_detail":
-                    matri_id = selected_profile.get("MatriID") if selected_profile else None
-                    name = selected_profile.get("Name") if selected_profile else None
-                    if not matri_id and not name:
-                        reply_text = "Which profile would you like details about? Please select one first."
+                    selected_index = extracted.get("selected_index")
+                    selected_reference = extracted.get("selected_reference")
+
+                    resolved, clarification = resolve_contextual_profile(
+                        selected_index, selected_reference, candidates, selected_profile
+                    )
+                    if clarification:
+                        reply_text = clarification
                         yield f"data: {json.dumps({'type': 'token', 'content': reply_text})}\n\n"
-                        response_metadata = {"selected_profile": None, "accumulated_filters": {}}
-                    elif extracted.get("fields") in (None, ["all"]):
-                        reply_text = _DETAIL_CATEGORY_QUESTION
-                        yield f"data: {json.dumps({'type': 'token', 'content': reply_text})}\n\n"
-                        response_metadata = {"selected_profile": selected_profile, "accumulated_filters": accumulated_filters}
-                    if not reply_text:
-                        cached = ctx.get("cached_profile_data")
-                        if cached and str(cached.get("MatriID")) == str(matri_id):
-                            sql_result = {"sql": "cached", "rows": [cached], "row_count": 1}
-                            from app.services.db_query_service import _add_photo_url
-                            for row in sql_result["rows"]:
-                                _add_photo_url(row)
-                        else:
-                            from app.services.query_builder import build_detail_query
-                            fields = extracted.get("fields")
-                            timer.begin("search")
-                            yield f"data: {json.dumps({'type': 'status', 'step': 'search'})}\n\n"
-                            sql, params = build_detail_query(matri_id=matri_id, name=name, fields=fields, limit=extracted.get("limit", 1))
-                            sql_result = await execute_param_query(sql, params)
-                            if sql_result.get("rows"):
+                        response_metadata = {
+                            "selected_profile": selected_profile,
+                            "accumulated_filters": accumulated_filters,
+                            "profile_candidates": candidates,
+                        }
+                    else:
+                        selected_profile = resolved
+                        matri_id = selected_profile.get("MatriID") if selected_profile else None
+                        name = selected_profile.get("Name") if selected_profile else None
+                        if not matri_id and not name:
+                            reply_text = "Which profile would you like details about? Please select one first."
+                            yield f"data: {json.dumps({'type': 'token', 'content': reply_text})}\n\n"
+                            response_metadata = {"selected_profile": None, "accumulated_filters": {}, "profile_candidates": candidates}
+                        elif extracted.get("fields") in (None, ["all"]):
+                            reply_text = _DETAIL_CATEGORY_QUESTION
+                            yield f"data: {json.dumps({'type': 'token', 'content': reply_text})}\n\n"
+                            response_metadata = {"selected_profile": selected_profile, "accumulated_filters": accumulated_filters, "profile_candidates": candidates}
+                        if not reply_text:
+                            cached = ctx.get("cached_profile_data")
+                            if cached and str(cached.get("MatriID")) == str(matri_id):
+                                sql_result = {"sql": "cached", "rows": [cached], "row_count": 1}
                                 from app.services.db_query_service import _add_photo_url
                                 for row in sql_result["rows"]:
                                     _add_photo_url(row)
-                        if not sql_result.get("rows"):
-                            reply_text = "Profile not found."
-                            yield f"data: {json.dumps({'type': 'token', 'content': reply_text})}\n\n"
-                        else:
-                            from app.services.db_query_service import _message_asks_about_unavailable_attribute
-                            if _message_asks_about_unavailable_attribute(message):
-                                notice = await format_db_notice(message, "This information is not available in the database.", history=history, db=self.db)
-                                reply_text = notice.get("content", "This information is not available in the database.")
+                            else:
+                                from app.services.query_builder import build_detail_query
+                                fields = extracted.get("fields")
+                                timer.begin("search")
+                                yield f"data: {json.dumps({'type': 'status', 'step': 'search'})}\n\n"
+                                sql, params = build_detail_query(matri_id=matri_id, name=name, fields=fields, limit=extracted.get("limit", 1))
+                                sql_result = await execute_param_query(sql, params)
+                                if sql_result.get("rows"):
+                                    from app.services.db_query_service import _add_photo_url
+                                    for row in sql_result["rows"]:
+                                        _add_photo_url(row)
+                            if not sql_result.get("rows"):
+                                reply_text = "Profile not found."
                                 yield f"data: {json.dumps({'type': 'token', 'content': reply_text})}\n\n"
                             else:
-                                timer.begin("format")
-                                yield f"data: {json.dumps({'type': 'status', 'step': 'format'})}\n\n"
-                                async for token, final in stream_format_db_result(message, sql_result, history=history, db=self.db):
-                                    if token:
-                                        collected_tokens.append(token)
-                                        yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
-                                    if final:
-                                        usage = accumulate_usage(usage, final.get("usage", {}))
-                                        events.extend(final.get("events", []))
-                                        reply_text = final.get("content", "".join(collected_tokens))
-                            profile_rows = [{"MatriID": r.get("MatriID"), "Name": r.get("Name")} for r in sql_result["rows"] if r.get("Name")]
-                            response_metadata = {
-                                "selected_profile": profile_rows[0] if profile_rows else None,
-                                "accumulated_filters": {},
-                                "cached_profile_data": sql_result["rows"][0] if sql_result.get("rows") else None,
-                            }
+                                from app.services.db_query_service import _message_asks_about_unavailable_attribute
+                                if _message_asks_about_unavailable_attribute(message):
+                                    notice = await format_db_notice(message, "This information is not available in the database.", history=history, db=self.db)
+                                    reply_text = notice.get("content", "This information is not available in the database.")
+                                    yield f"data: {json.dumps({'type': 'token', 'content': reply_text})}\n\n"
+                                else:
+                                    timer.begin("format")
+                                    yield f"data: {json.dumps({'type': 'status', 'step': 'format'})}\n\n"
+                                    async for token, final in stream_format_db_result(message, sql_result, history=history, db=self.db):
+                                        if token:
+                                            collected_tokens.append(token)
+                                            yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
+                                        if final:
+                                            usage = accumulate_usage(usage, final.get("usage", {}))
+                                            events.extend(final.get("events", []))
+                                            reply_text = final.get("content", "".join(collected_tokens))
+                                profile_rows = [{"MatriID": r.get("MatriID"), "Name": r.get("Name")} for r in sql_result["rows"] if r.get("Name")]
+                                response_metadata = {
+                                    "selected_profile": selected_profile if selected_profile else (profile_rows[0] if profile_rows else None),
+                                    "accumulated_filters": {},
+                                    "cached_profile_data": sql_result["rows"][0] if sql_result.get("rows") else None,
+                                    "profile_candidates": candidates if candidates else (profile_rows if profile_rows else None),
+                                }
                 else:
                     new_filters = extracted.get("filters", {})
                     from app.services.db_query_service import _merge_filters

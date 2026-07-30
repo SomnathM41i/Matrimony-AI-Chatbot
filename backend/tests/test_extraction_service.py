@@ -189,9 +189,13 @@ class KeywordFallbackTests(unittest.TestCase):
 
 class ExtractSearchParamsTests(unittest.IsolatedAsyncioTestCase):
     async def test_non_profile_message_returns_general(self):
-        result = await extract_search_params("what is 2+2")
-        self.assertEqual(result["intent"], "general")
-        self.assertEqual(result["filters"], {})
+        mock_response = {
+            "content": '{"intent": "general", "filters": {}, "limit": 10}'
+        }
+        with patch("app.services.extraction_service.call_groq", new=AsyncMock(return_value=mock_response)):
+            result = await extract_search_params("what is 2+2")
+            self.assertEqual(result["intent"], "general")
+            self.assertEqual(result["filters"], {})
 
     async def test_llm_failure_falls_back_to_keyword(self):
         with patch("app.services.extraction_service.call_groq", new=AsyncMock(side_effect=RuntimeError("API down"))):
