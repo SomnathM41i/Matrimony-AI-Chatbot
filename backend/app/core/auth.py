@@ -1,8 +1,8 @@
-from datetime import datetime, timezone
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.security import decode_token
+from app.core.time_utils import get_utc_now
 from app.database import get_db_session
 from app.repositories.user_repository import UserRepository
 
@@ -30,7 +30,7 @@ async def get_current_user(
     token_version = payload.get("token_version", 0)
     if token_version != user.token_version:
         raise HTTPException(status_code=401, detail="Token has been invalidated. Please log in again.")
-    now = datetime.now(timezone.utc)
+    now = get_utc_now().replace(tzinfo=None)
     if not user.last_activity or (now - user.last_activity).total_seconds() > 60:
         user.last_activity = now
         await db.commit()
