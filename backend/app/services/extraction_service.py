@@ -287,10 +287,13 @@ async def extract_search_params(
         return {"intent": "general", "filters": {}, "limit": 10, "selected_index": None, "selected_reference": None}
 
     # Tier 2: Zero-Memory Local TF-IDF Centroid Similarity Router
+    # Only short-circuit to "general" when the router is confident about general.
+    # Low scores (e.g. Romanized Marathi) fall through to the LLM so they are
+    # not misrouted into a "no matches" notice before the LLM ever sees them.
     try:
         best_cls, score = router.route(message)
         logger.info(f"TF-IDF Local Router classified: '{message}' -> '{best_cls}' (Similarity: {score:.3f})")
-        if best_cls == 'general' or score < settings.ROUTER_THRESHOLD:
+        if best_cls == 'general' and score >= settings.ROUTER_THRESHOLD:
             logger.info("Intent: local router general in %dms", (time.perf_counter() - started) * 1000)
             return {"intent": "general", "filters": {}, "limit": 10, "selected_index": None, "selected_reference": None}
     except Exception as e:

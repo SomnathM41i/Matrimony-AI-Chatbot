@@ -102,7 +102,12 @@ async def health():
         "version": "2.0.0",
         "llm": {
             "provider": settings.LLM_PROVIDER,
-            "model": "qwen2.5:3b-instruct-q4_K_M" if settings.LLM_PROVIDER == "ollama" else "llama-3.3-70b-versatile",
+            "model": {
+                "ollama": "qwen2.5:3b-instruct-q4_K_M",
+                "groq": "llama-3.3-70b-versatile",
+                "cerebras": "llama-3.3-70b",
+                "gemini": "gemini-2.5-flash",
+            }.get(settings.LLM_PROVIDER, "llama-3.3-70b-versatile"),
         },
     }
 
