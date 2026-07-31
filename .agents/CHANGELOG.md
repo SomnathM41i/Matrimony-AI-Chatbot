@@ -53,8 +53,14 @@ search behaviour or UI behaviour were changed.
   `backend/app/core/logger.py`, `backend/app/main.py`, `README.md`
 
 ### Verification
-174 tests pass (164 pre-existing + 10 new). Each new test was confirmed to fail when its
-fix is reverted. `pyflakes` reports no undefined names.
+174 tests pass under `unittest discover` (164 pre-existing + 10 new), or 175 under
+`pytest`, which additionally collects the bare `def test_acceptance()` function that
+`unittest` skips. Each new test was confirmed to fail when its fix is reverted.
+`pyflakes` reports no undefined names.
+
+Note: that extra pytest-only test is a live deployment smoke script that swallows its
+own failures and `return`s instead of asserting, so it passes even with no server
+running. Logged in `ISSUES.md`; pre-existing on `main`, not addressed here.
 
 ### Known, deliberately not changed
 - `build_profile_query()` wraps every predicate in `LOWER(col) = LOWER(%s)`, which is

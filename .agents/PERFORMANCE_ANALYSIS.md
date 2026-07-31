@@ -395,3 +395,29 @@ The remaining LLM cost — a 70B model receiving untruncated conversation histor
 decision that the constraints explicitly placed out of scope, so it was left alone. If the stages are still slow
 after this change, the new per-call logs (`LLM task=... prompt_chars=... latency=...ms`) will show exactly where the
 time goes, and reducing history sent to the extraction call is the next lever to discuss.
+
+### Post-review notes (2026-07-31)
+
+Raised in review and verified:
+
+- **Gateway log volume.** The concern was one INFO line per LLM call *plus one per stream
+  batch*. Measured: the stream log sits outside the token loop behind `if event_data:`, so
+  50 token batches produce exactly 1 line. Actual volume is 2-3 lines per chat turn, i.e.
+  one per completed LLM call. Left at INFO deliberately, since surfacing LLM latency and
+  prompt size is the point of Issue 7 and the remaining latency question (untruncated
+  history to a 70B model) is still open. Worth dropping to DEBUG once that is settled.
+- **`build_schema_context()` memoization race.** Confirmed benign: two threads may each
+  build the string once and the last write wins. Both produce identical output and the
+  result is idempotent, so a lock would add contention for no correctness gain.
+- **Startup warmup holds the model lock.** Correct. A request arriving mid-warmup waits for
+  the load to finish, which is the same cost that request previously paid on its own; it is
+  moved earlier, not removed. Behaviour is strictly no worse than before.
+- **Missing `db.commit()` in `process_message()`.** Confirmed pre-existing on `main` and
+  not touched by this work. The streaming path commits; the non-streaming path relies on
+  the caller in `chat_routes.py`, which does `await db.commit()` after `process_message()`
+  returns. Not a defect, but the asymmetry is worth a follow-up.
+- **Test count 174 vs 175.** Not environment variance. `tests/test_acceptance.py` declares
+  a bare `def test_acceptance()` rather than a `unittest.TestCase`, so `unittest discover`
+  skips it and `pytest` collects it. The test also cannot fail: it swallows every exception
+  and `return`s instead of asserting, so it reports a pass with no server running. Logged
+  in `ISSUES.md`.
