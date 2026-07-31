@@ -1,10 +1,24 @@
-from datetime import datetime
-from zoneinfo import ZoneInfo
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from app.config import settings
 
+
+def _load_tz(name: str) -> ZoneInfo | timezone:
+    try:
+        return ZoneInfo(name)
+    except (ZoneInfoNotFoundError, KeyError):
+        try:
+            import tzdata  # noqa: F401
+            return ZoneInfo(name)
+        except ImportError:
+            pass
+    return timezone.utc
+
+
 # Globally cache ZoneInfo objects
-TZ_IST = ZoneInfo(settings.APP_TIMEZONE if hasattr(settings, 'APP_TIMEZONE') else "Asia/Kolkata")
-TZ_UTC = ZoneInfo("UTC")
+APP_TIMEZONE = getattr(settings, 'APP_TIMEZONE', "Asia/Kolkata")
+TZ_IST = _load_tz(APP_TIMEZONE if APP_TIMEZONE else "Asia/Kolkata")
+TZ_UTC = _load_tz("UTC")
 
 def get_ist_now() -> datetime:
     """Returns the current timezone-aware datetime in Asia/Kolkata (IST)."""

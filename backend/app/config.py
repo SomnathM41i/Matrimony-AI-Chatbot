@@ -30,7 +30,15 @@ class Settings(BaseSettings):
     GROQ_MODEL: str = "llama-3.3-70b-versatile"
     GROQ_VERIFY_SSL: bool = True
 
-    LLM_PROVIDER: str = "groq"   # "ollama" or "groq"
+    CEREBRAS_API_KEY: str = ""
+    CEREBRAS_API_URL: str = "https://api.cerebras.ai/v1/chat/completions"
+    CEREBRAS_MODEL: str = "llama-3.3-70b"
+
+    GEMINI_API_KEY: str = ""
+    GEMINI_API_URL: str = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+    GEMINI_MODEL: str = "gemini-2.5-flash"
+
+    LLM_PROVIDER: str = "groq"   # "ollama" | "groq" | "cerebras" | "gemini"
 
     DEFAULT_TEMPERATURE: float = 0.5
     DEFAULT_MAX_TOKENS: int = 1200
