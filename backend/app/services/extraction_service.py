@@ -1,6 +1,7 @@
 import json
 import re
 import math
+import time
 import numpy as np
 from app.config import settings
 from app.core.prompts import STRUCTURED_EXTRACTION_PROMPT
@@ -279,7 +280,10 @@ async def extract_search_params(
         "fine", "sure", "not really", "आभार", "धन्यवाद", "ठीक आहे", "thank",
         "great", "awesome", "cool", "perfect"
     }
+    started = time.perf_counter()
+
     if msg_clean in FAST_PATH_GENERAL:
+        logger.info("Intent: fast-path general in %dms", (time.perf_counter() - started) * 1000)
         return {"intent": "general", "filters": {}, "limit": 10, "selected_index": None, "selected_reference": None}
 
     # Tier 2: Zero-Memory Local TF-IDF Centroid Similarity Router
@@ -290,6 +294,7 @@ async def extract_search_params(
         best_cls, score = router.route(message)
         logger.info(f"TF-IDF Local Router classified: '{message}' -> '{best_cls}' (Similarity: {score:.3f})")
         if best_cls == 'general' and score >= settings.ROUTER_THRESHOLD:
+            logger.info("Intent: local router general in %dms", (time.perf_counter() - started) * 1000)
             return {"intent": "general", "filters": {}, "limit": 10, "selected_index": None, "selected_reference": None}
     except Exception as e:
         logger.warning(f"TF-IDF routing exception: {e}")
@@ -317,6 +322,7 @@ async def extract_search_params(
             )
         raw = result.get("content", "")
         parsed = json.loads(clean_json(raw))
+        logger.info("Intent: LLM extraction in %dms", (time.perf_counter() - started) * 1000)
     except Exception as e:
         logger.warning(f"Extraction failed, using keyword fallback: {e}")
         if _is_detail_query(message):

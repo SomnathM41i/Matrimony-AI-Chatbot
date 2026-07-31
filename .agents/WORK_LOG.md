@@ -103,3 +103,15 @@
 - Added six commercial quota/cost/chat integration tests; total suite now has 26 passing tests.
 - Validation completed: Python compile, 26 backend tests, frontend production build, FastAPI startup/public plan smoke test, route registration inspection, and `git diff --check`.
 - External limitation: live gateway payment and live AI-provider acceptance tests require deployment credentials and remain explicitly tracked.
+
+## 2026-07-31 — Performance and stability fixes
+
+- Analysed the reported issues against the code before changing anything; findings recorded in `.agents/PERFORMANCE_ANALYSIS.md`.
+- Confirmed the `name 'db' is not defined` report by static analysis (`pyflakes` flagged `chat_service.py:380`) and then reproduced the exact log line at runtime with Qdrant reachable and zero vector hits. Also found the same call passes 5 positional arguments to a 4-parameter function.
+- Established a 164-test baseline before editing, and kept it green throughout; final state is 174 tests.
+- Each new regression test was verified to fail when its corresponding fix is reverted, so the tests genuinely guard the bugs.
+- Two claims from the pre-approval analysis were checked and corrected: the MySQL pool does retry after a failed creation (`_pool` stays `None`), so no change was made there; and the schema-context saving is ~1.7 ms per turn rather than the 5-40 ms originally estimated, because prompt truncation caps the context near 2.5 KB.
+- Scope was deliberately kept small per the follow-up instruction: dropped the proposed extraction result cache, shared HTTP client pool, route-target cache, new config settings and the vector-service async wrapper. Used `asyncio.to_thread` at the two existing call sites instead of introducing a new abstraction.
+- Measured the event-loop fix directly: a 0.5 s blocking Qdrant call allowed 3 heartbeat ticks before and 52 after.
+- Reviewer reported 175 passing tests against the PR head while this branch reported 174. Investigated rather than attributing it to environment variance: `tests/test_acceptance.py` declares a bare `def test_acceptance()` rather than a `unittest.TestCase`, so `unittest discover` skips it and `pytest` collects it. Both counts were correct for their runner.
+- That test cannot fail: each check is wrapped in a `try/except` that only increments a counter, and the function ends with `return failed == 0` instead of asserting. Confirmed by running it under pytest with no server on localhost:8000 — it reports "1 passed" while every HTTP call fails, and pytest emits `PytestReturnNotNoneWarning`. Recorded in `ISSUES.md` as a pre-existing defect on `main`; not fixed here to keep this PR scoped to the performance work.

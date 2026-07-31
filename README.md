@@ -42,7 +42,7 @@ cp .env.example .env          # Fill in: GROQ_API_KEY, DB credentials
 python -m venv venv
 venv\Scripts\activate         # Windows
 pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
+python run_dev.py             # dev server (reloads only on app/ changes)
 ```
 
 ### 2. Frontend Setup (in another terminal)

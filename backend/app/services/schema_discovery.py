@@ -29,6 +29,8 @@ SEARCH_COLUMNS = [
 
 _schema_cache = None
 _schema_lock = threading.Lock()
+# Rendered form of _schema_cache. Rebuilt only when the schema cache changes.
+_schema_context_cache = None
 
 
 def _sync_fetch_all() -> dict:
@@ -85,10 +87,11 @@ def _sync_fetch_all() -> dict:
 
 
 def refresh_cache():
-    global _schema_cache
+    global _schema_cache, _schema_context_cache
     with _schema_lock:
         try:
             _schema_cache = _sync_fetch_all()
+            _schema_context_cache = None
             logger.info("Schema cache refreshed")
         except Exception as e:
             logger.error(f"Schema refresh failed: {e}")
@@ -161,6 +164,18 @@ REGISTER_COLUMN_CATEGORIES = {
 
 
 def build_schema_context() -> str:
+    """Return the rendered schema context.
+
+    The result depends only on the schema cache, so it is built once and reused
+    instead of being re-rendered on every LLM call.
+    """
+    global _schema_context_cache
+    if _schema_context_cache is None:
+        _schema_context_cache = _build_schema_context()
+    return _schema_context_cache
+
+
+def _build_schema_context() -> str:
     schema = get_schema()
     lines = ["## Database Schema (register table — member profiles) ##", ""]
 
