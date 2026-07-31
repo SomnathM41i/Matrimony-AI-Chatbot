@@ -6,6 +6,7 @@ from app.services.llm_service import get_general_response
 from app.services.db_query_service import answer_database_question_hybrid, DatabaseQueryError, accumulate_usage
 from app.core.logger import logger, StepTimer
 from datetime import datetime, timezone
+import asyncio
 import httpx
 import json
 import re
@@ -175,6 +176,8 @@ class ChatService:
                     profile_candidates = metadata.get("profile_candidates")
             except (TypeError, ValueError):
                 continue
+            if None not in (selected_profile, accumulated_filters, cached_profile_data, profile_candidates):
+                break
 
         if selected_profile:
             history.append({
@@ -219,6 +222,8 @@ class ChatService:
             return
 
         request_id = uuid.uuid4().hex
+        timer = StepTimer(request_id=request_id)
+        timer.begin("context")
         if conversation_id:
             conv = await self.conv_repo.get_by_id(conversation_id)
             if not conv or conv.user_id != user_id:
@@ -251,7 +256,6 @@ class ChatService:
             from app.services.llm_service import stream_general_response, stream_format_db_result, format_db_notice
             from app.services.db_query_service import execute_param_query
 
-            timer = StepTimer()
             timer.begin("analyze")
             yield f"data: {json.dumps({'type': 'status', 'step': 'analyze'})}\n\n"
 
@@ -352,13 +356,13 @@ class ChatService:
                     if sql_result["row_count"] == 0:
                         try:
                             from app.services.embedding_service import embed_text, build_profile_document
-                            from app.services.vector_service import search_with_filters, get_client
-                            get_client(host=settings.QDRANT_HOST, port=settings.QDRANT_PORT)
+                            from app.services.vector_service import search_with_filters
                             timer.begin("ai_search")
                             yield f"data: {json.dumps({'type': 'status', 'step': 'ai_search'})}\n\n"
                             query_text = build_profile_document(filters)
                             query_vector = await embed_text(f"query: {message}. {query_text}", model_name=settings.EMBEDDING_MODEL)
-                            vector_rows = search_with_filters(query_vector, filters=filters, limit=limit, host=settings.QDRANT_HOST, port=settings.QDRANT_PORT)
+                            # search_with_filters blocks on network I/O, so keep it off the event loop.
+                            vector_rows = await asyncio.to_thread(search_with_filters, query_vector, filters, limit, settings.QDRANT_HOST, settings.QDRANT_PORT)
                             if vector_rows:
                                 for row in vector_rows:
                                     from app.services.db_query_service import _add_photo_url
@@ -377,11 +381,11 @@ class ChatService:
                                         events.extend(final.get("events", []))
                                         reply_text = final.get("content", "".join(collected_tokens))
                             else:
-                                notice = await format_db_notice(message, "No matching profiles found. Suggest trying a different city, caste, or age range.", history, db, "No matching profiles found.")
-                                reply_text = notice.get("content", "No matching profiles found.")
+                                from app.services.db_query_service import _format_notice_safe
+                                reply_text = await _format_notice_safe(message, "No matching profiles found. Suggest trying a different city, caste, or age range.", history, self.db, "No matching profiles found.")
                                 yield f"data: {json.dumps({'type': 'token', 'content': reply_text})}\n\n"
-                        except Exception as e:
-                            logger.warning(f"Vector search fallback failed: {e}")
+                        except Exception:
+                            logger.exception("Vector search fallback failed")
                             from app.services.db_query_service import _format_notice_safe
                             msg = await _format_notice_safe(message, "No matching profiles found. Suggest trying a different city, caste, or age range.", history, self.db, "No matching profiles found.")
                             reply_text = msg
@@ -440,6 +444,8 @@ class ChatService:
 
         except Exception as e:
             logger.exception("Chat streaming error")
+            # Timings are most useful when a request fails, so emit them here too.
+            timer.log_summary("error")
             try:
                 await self.db.rollback()
             except Exception:
@@ -473,6 +479,8 @@ class ChatService:
             }
 
         request_id = uuid.uuid4().hex
+        timer = StepTimer(request_id=request_id)
+        timer.begin("context")
         if conversation_id:
             conv = await self.conv_repo.get_by_id(conversation_id)
             if not conv or conv.user_id != user_id:
@@ -494,13 +502,16 @@ class ChatService:
         usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         events = []
         response_metadata = None
+        intent = "normal"
         try:
+            timer.begin("answer")
             result = await answer_database_question_hybrid(
                 message, history=history, db=self.db,
                 conversation_context=conversation_context,
             )
             if result.get("is_profile_search", False):
                 request_type = "database"
+                intent = "database"
             else:
                 if _is_profile_query(message, history):
                     from app.services.llm_service import format_db_notice
@@ -537,7 +548,9 @@ class ChatService:
         except Exception as e:
             logger.exception("Chat processing error")
             reply_text = user_facing_error(e)
+            intent = "error"
 
+        timer.begin("persist")
         assistant_msg = await self.msg_repo.create(
             conversation_id=conv.id,
             user_id=user_id,
@@ -550,6 +563,7 @@ class ChatService:
         )
 
         await self.conv_repo.update(conv, updated_at=datetime.now(timezone.utc))
+        timer.log_summary(intent)
 
         return {
             "reply": reply_text,

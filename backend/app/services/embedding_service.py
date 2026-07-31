@@ -1,23 +1,39 @@
+import threading
 import numpy as np
 from sentence_transformers import SentenceTransformer
+from app.config import settings
 from app.core.logger import logger
 
 
-DEFAULT_MODEL = "BAAI/bge-m3"
+# Single source of truth for the model name so every caller shares one instance.
+DEFAULT_MODEL = settings.EMBEDDING_MODEL
 FALLBACK_MODEL = "intfloat/multilingual-e5-small"
 
 _model_instance = None
 _model_name = None
+_model_lock = threading.Lock()
 
 
 def get_embedding_model(model_name: str = DEFAULT_MODEL) -> SentenceTransformer:
     global _model_instance, _model_name
-    if _model_instance is None or _model_name != model_name:
-        logger.info(f"Loading embedding model: {model_name}")
-        _model_instance = SentenceTransformer(model_name)
-        _model_name = model_name
-        logger.info(f"Embedding model loaded. Dimension: {_model_instance.get_sentence_embedding_dimension()}")
+    if _model_instance is not None and _model_name == model_name:
+        return _model_instance
+    with _model_lock:
+        # Re-check inside the lock: a concurrent caller may have loaded it already.
+        if _model_instance is None or _model_name != model_name:
+            logger.info(f"Loading embedding model: {model_name}")
+            _model_instance = SentenceTransformer(model_name)
+            _model_name = model_name
+            logger.info(f"Embedding model loaded. Dimension: {_model_instance.get_sentence_embedding_dimension()}")
     return _model_instance
+
+
+def warmup_embedding_model() -> None:
+    """Load the model once at startup so no user request pays the load cost."""
+    try:
+        get_embedding_model()
+    except Exception as e:
+        logger.warning(f"Embedding model warmup failed: {e}")
 
 
 def get_embedding_dimension(model_name: str = DEFAULT_MODEL) -> int:

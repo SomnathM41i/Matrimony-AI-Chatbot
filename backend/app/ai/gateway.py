@@ -154,6 +154,11 @@ async def call_ai(
             )
             content = data["choices"][0]["message"]["content"]
             event = _event(task_key, provider, model, data, latency_ms)
+            logger.info(
+                "LLM task=%s model=%s prompt_chars=%d latency=%dms",
+                task_key, model.external_id,
+                sum(len(str(m.get("content", ""))) for m in messages), latency_ms,
+            )
             return {"content": content, "usage": data.get("usage", {}), "events": [event]}
         except AIConfigurationError:
             raise
@@ -297,6 +302,11 @@ async def stream_call_ai(
             if event_data:
                 usage = event_data.get("usage", {})
                 latency_ms = event_data.get("latency_ms", 0)
+                logger.info(
+                    "LLM stream task=%s model=%s prompt_chars=%d latency=%dms",
+                    task_key, model.external_id,
+                    sum(len(str(m.get("content", ""))) for m in messages), latency_ms,
+                )
                 data_for_event = {
                     "choices": [{"message": {"content": event_data.get("content", "")}}],
                     "usage": usage,

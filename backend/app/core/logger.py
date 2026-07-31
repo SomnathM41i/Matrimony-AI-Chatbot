@@ -11,15 +11,20 @@ handler.setFormatter(logging.Formatter(
     "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     datefmt="%H:%M:%S",
 ))
-logger.addHandler(handler)
+if not logger.handlers:
+    logger.addHandler(handler)
+# Uvicorn configures the root logger; without this every line is emitted twice.
+logger.propagate = False
 
 
 class StepTimer:
-    def __init__(self):
+    def __init__(self, request_id: str | None = None):
         self.steps = []
+        self.request_id = request_id
         self._start = time.perf_counter()
         self._current_step = None
         self._current_start = None
+        self._logged = False
 
     def begin(self, label: str):
         now = time.perf_counter()
@@ -45,7 +50,15 @@ class StepTimer:
         return " | ".join(parts) if parts else ""
 
     def log_summary(self, intent: str):
+        # Guard so a summary logged in a finally block does not duplicate the
+        # one already logged on the success path.
+        if self._logged:
+            return
+        self._logged = True
         total = self.end()
         self.steps.append(("total", total))
         steps_str = self.summary()
-        logger.info("[%s] %s", intent, steps_str)
+        if self.request_id:
+            logger.info("[%s] [req=%s] %s", intent, self.request_id[:8], steps_str)
+        else:
+            logger.info("[%s] %s", intent, steps_str)

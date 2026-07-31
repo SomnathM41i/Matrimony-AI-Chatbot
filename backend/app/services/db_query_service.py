@@ -165,8 +165,9 @@ def _sync_get_connection():
     if pool:
         try:
             return pool.get_connection()
-        except Exception:
-            pass
+        except Exception as e:
+            # Pool exhausted or unhealthy: fall back to a direct connection.
+            logger.debug(f"MySQL pool unavailable, using direct connection: {e}")
     return mysql.connector.connect(**_build_connection_args())
 
 
@@ -303,21 +304,21 @@ async def _handle_profile_search(
     if sql_result["row_count"] == 0:
         try:
             from app.services.embedding_service import embed_text, build_profile_document
-            from app.services.vector_service import search_with_filters, get_client
-
-            get_client(host=settings.QDRANT_HOST, port=settings.QDRANT_PORT)
+            from app.services.vector_service import search_with_filters
 
             query_text = build_profile_document(filters)
             query_vector = await embed_text(
                 f"query: {message}. {query_text}",
                 model_name=settings.EMBEDDING_MODEL,
             )
-            vector_rows = search_with_filters(
+            # search_with_filters blocks on network I/O, so keep it off the event loop.
+            vector_rows = await asyncio.to_thread(
+                search_with_filters,
                 query_vector,
-                filters=filters,
-                limit=limit,
-                host=settings.QDRANT_HOST,
-                port=settings.QDRANT_PORT,
+                filters,
+                limit,
+                settings.QDRANT_HOST,
+                settings.QDRANT_PORT,
             )
             if vector_rows:
                 for row in vector_rows:
@@ -349,8 +350,8 @@ async def _handle_profile_search(
                     "events": formatted.get("events", []),
                     "metadata": metadata,
                 }
-        except Exception as e:
-            logger.warning(f"Vector search fallback failed: {e}")
+        except Exception:
+            logger.exception("Vector search fallback failed")
 
         msg = await _format_notice_safe(
             message,

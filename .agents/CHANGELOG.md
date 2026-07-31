@@ -1,5 +1,69 @@
 # Changelog
 
+## 2026-07-31 — Performance & Stability Fixes (no feature changes)
+
+Analysis: `.agents/PERFORMANCE_ANALYSIS.md`. No prompts, schema, API contracts,
+search behaviour or UI behaviour were changed.
+
+### Fixed
+- **WatchFiles restart loop** — added `backend/run_dev.py` with `reload_dirs=["app"]`,
+  so the watcher never walks `venv/`, `site-packages/`, model caches or `.git`.
+  Loading the embedding model no longer restarts the server mid-request.
+  README start command updated.
+- **`NameError: name 'db' is not defined`** — `chat_service.py` line 380 used a bare
+  `db` inside `ChatService` (session is `self.db`), and passed 5 positional args to the
+  4-parameter `format_db_notice()`. Replaced with `_format_notice_safe(...)`, which
+  already has that exact signature. Reproduced the reported log before the fix and
+  confirmed it is gone after.
+- **Misleading fallback log** — the enclosing `except` reported "Vector search fallback
+  failed" for errors after a *successful* vector search. Now `logger.exception` so the
+  real cause and traceback are recorded (`chat_service.py`, `db_query_service.py`).
+- **Embedding model loaded more than once** — `get_embedding_model()` had no lock, so
+  concurrent misses each built a ~2.2 GB model. Added double-checked locking and keyed
+  `DEFAULT_MODEL` off `settings.EMBEDDING_MODEL` so callers passing the setting and
+  callers using the default share one instance instead of evicting each other.
+- **Event loop blocked by Qdrant** — `search_with_filters()` is synchronous with a 120 s
+  timeout and was awaited directly from async handlers. Now called via `asyncio.to_thread`
+  at both call sites. Measured: 3 → 52 heartbeat ticks during a 0.5 s Qdrant call.
+
+### Optimized
+- Embedding model warmed once at startup in a background thread (`main.py`), moving the
+  cold-load cost out of the first user request without delaying startup or `/health`.
+- `build_schema_context()` memoized; invalidated by `refresh_cache()`. Output verified
+  byte-identical. Was re-rendered on every LLM call at 5 call sites.
+- `_load_history()` stops scanning once all four metadata keys are resolved instead of
+  JSON-parsing every message in the conversation. Result verified identical.
+- Removed a redundant `get_client()` warm-up call before `search_with_filters()`, which
+  already resolves the client itself.
+
+### Diagnostics
+- `logger.propagate = False` — every log line was previously emitted twice under uvicorn.
+- `StepTimer` accepts a `request_id` and refuses to log twice; timings are now emitted on
+  the error path as well as on success.
+- `process_message()` (non-streaming) had no instrumentation at all; now timed.
+- LLM latency and prompt size logged per call in `gateway.py`; intent-resolution path and
+  duration logged in `extraction_service.py`.
+
+### Files Modified
+- `backend/run_dev.py` (new), `backend/tests/test_performance_fixes.py` (new, 10 tests),
+  `.agents/PERFORMANCE_ANALYSIS.md` (new)
+- `backend/app/services/chat_service.py`, `backend/app/services/db_query_service.py`,
+  `backend/app/services/embedding_service.py`, `backend/app/services/schema_discovery.py`,
+  `backend/app/services/extraction_service.py`, `backend/app/ai/gateway.py`,
+  `backend/app/core/logger.py`, `backend/app/main.py`, `README.md`
+
+### Verification
+174 tests pass (164 pre-existing + 10 new). Each new test was confirmed to fail when its
+fix is reverted. `pyflakes` reports no undefined names.
+
+### Known, deliberately not changed
+- `build_profile_query()` wraps every predicate in `LOWER(col) = LOWER(%s)`, which is
+  non-sargable and prevents index use on `register`. Fixing it requires functional indexes
+  or a collation change — a schema/DDL change, out of scope.
+- Intent extraction routes to `sql_generation` (70B model) and sends untruncated history;
+  `INTENT_MODEL` is configured but unused on this path. Both are routing/behaviour
+  decisions, left untouched.
+
 ## 2026-07-29 — Bug Fix Phases 1-3 (Security, Correctness, Robustness)
 
 ### Phase 1 — Security & Critical Bugs

@@ -18,6 +18,13 @@ async def lifespan(app: FastAPI):
     from app.services.schema_discovery import refresh_cache
     refresh_cache()
 
+    # Load the embedding model once here instead of inside the first user request.
+    # Runs in a worker thread so startup and /health stay responsive.
+    import asyncio
+    from app.services.embedding_service import warmup_embedding_model
+    # Keep a reference for the lifetime of the app so the task is not garbage collected.
+    app.state.warmup_task = asyncio.create_task(asyncio.to_thread(warmup_embedding_model))
+
     try:
         from app.services.vector_service import get_client, COLLECTION_NAME
         client = get_client(host=settings.QDRANT_HOST, port=settings.QDRANT_PORT)
