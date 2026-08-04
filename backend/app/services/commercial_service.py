@@ -88,14 +88,14 @@ async def seed_commercial_defaults(db: AsyncSession) -> None:
     ollama_model = (await db.execute(
         select(AIModel).where(
             AIModel.provider_id == ollama_provider.id,
-            AIModel.external_id == "qwen2.5:3b-instruct-q4_K_M",
+            AIModel.external_id == "qwen2.5:7b-instruct",
         )
     )).scalar_one_or_none()
     if not ollama_model:
         ollama_model = AIModel(
             provider_id=ollama_provider.id,
-            external_id="qwen2.5:3b-instruct-q4_K_M",
-            display_name="Qwen 2.5 3B Instruct",
+            external_id="qwen2.5:7b-instruct",
+            display_name="Qwen 2.5 7B Instruct",
             context_window=32768,
             max_output_tokens=8192,
             supports_json=True,

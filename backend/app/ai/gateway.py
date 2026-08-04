@@ -84,7 +84,10 @@ async def _openai_compatible_request(
     api_key = _secret_value(provider.api_key_env)
     if provider.api_key_env and not api_key:
         raise AIConfigurationError(f"Secret {provider.api_key_env} is not configured")
-    headers = {"Content-Type": "application/json"}
+    headers = {
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    }
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     payload = {
@@ -163,10 +166,13 @@ async def call_ai(
         except AIConfigurationError:
             raise
         except httpx.HTTPStatusError as error:
-            if error.response.status_code not in {429, 500, 502, 503, 504}:
-                raise AIConfigurationError(
-                    f"Provider {provider.code} rejected the configured request"
-                ) from error
+            if error.response.status_code in {400, 401, 403, 404, 405, 409, 415, 422}:
+                logger.warning(
+                    "AI route target rejected task=%s provider=%s model=%s status=%s -> trying next target",
+                    task_key, provider.code, model.external_id, error.response.status_code,
+                )
+                last_error = error
+                continue
             last_error = error
             logger.warning(
                 "AI route target failed task=%s provider=%s model=%s status=%s",
@@ -198,7 +204,10 @@ async def _openai_compatible_request_stream(
     api_key = _secret_value(provider.api_key_env)
     if provider.api_key_env and not api_key:
         raise AIConfigurationError(f"Secret {provider.api_key_env} is not configured")
-    headers = {"Content-Type": "application/json"}
+    headers = {
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    }
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     payload = {
@@ -287,6 +296,7 @@ async def stream_call_ai(
                 raise AIConfigurationError(f"Unsupported AI adapter: {provider.adapter_type}")
 
             event_data = None
+            yielded_any = False
             async for token, final_data in _openai_compatible_request_stream(
                 provider,
                 model,
@@ -297,6 +307,7 @@ async def stream_call_ai(
                 if final_data is not None:
                     event_data = final_data
                 else:
+                    yielded_any = True
                     yield token, None
 
             if event_data:
@@ -323,16 +334,19 @@ async def stream_call_ai(
         except AIConfigurationError:
             raise
         except httpx.HTTPStatusError as error:
-            if error.response.status_code not in {429, 500, 502, 503, 504}:
-                raise AIConfigurationError(
-                    f"Provider {provider.code} rejected the configured request"
-                ) from error
-            last_error = error
-            logger.warning(
-                "AI route target failed task=%s provider=%s model=%s status=%s",
-                task_key, provider.code, model.external_id, error.response.status_code,
-            )
-            continue
+            if (
+                error.response.status_code in {400, 401, 403, 404, 405, 409, 415, 422}
+                and not yielded_any
+            ):
+                logger.warning(
+                    "AI route target rejected task=%s provider=%s model=%s status=%s -> trying next target",
+                    task_key, provider.code, model.external_id, error.response.status_code,
+                )
+                last_error = error
+                continue
+            raise AIConfigurationError(
+                f"Provider {provider.code} rejected the configured request"
+            ) from error
         except (httpx.TimeoutException, httpx.ConnectError, AIProviderUnavailableError, KeyError, ValueError) as error:
             last_error = error
             logger.warning(

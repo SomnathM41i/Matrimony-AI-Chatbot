@@ -132,7 +132,7 @@ async def health():
         "llm": {
             "provider": settings.LLM_PROVIDER,
             "model": {
-                "ollama": "qwen2.5:3b-instruct-q4_K_M",
+                "ollama": "qwen2.5:7b-instruct",
                 "groq": "llama-3.3-70b-versatile",
                 "cerebras": "llama-3.3-70b",
                 "gemini": "gemini-2.5-flash",
