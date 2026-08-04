@@ -375,18 +375,22 @@ def format_profile_results_markdown(filters: dict, sql_result: dict) -> str:
         lines.append(f"येथे {' '.join(ctx)} {count} प्रोफाइल आहेत:" if ctx else f"येथे {count} जुळणारी प्रोफाइल आहेत:")
         lines.append("")
 
-    for i, row in enumerate(rows, 1):
+    for row in rows:
         name = row.get("Name") or "प्रोफाइल"
         details = ", ".join(
             str(row.get(k)) for k in
             ("Age", "Gender", "City", "Caste", "Religion", "Occupation", "Education")
             if row.get(k)
         )
-        photo = row.get("PhotoURL") or ""
-        if photo:
-            lines.append(f"{i}. ![{name}]({photo}) {details}")
+        photo = row.get("PhotoURL") or row.get("Photo1") or ""
+        if photo and photo.lower() != "nophoto.jpg":
+            if photo.lower().startswith("http://") or photo.lower().startswith("https://"):
+                url = photo
+            else:
+                url = settings.PHOTO_BASE_URL.rstrip("/") + "/" + photo.lstrip("/")
         else:
-            lines.append(f"{i}. {name} — {details}")
+            url = settings.PHOTO_BASE_URL.rstrip("/") + "/nophoto.jpg"
+        lines.append(f"![{name}]({url}) {details}")
 
     return "\n".join(lines)
 

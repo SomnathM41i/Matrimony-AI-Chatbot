@@ -46,7 +46,11 @@ class Settings(BaseSettings):
     GEMINI_API_URL: str = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
     GEMINI_MODEL: str = "gemini-2.5-flash"
 
-    LLM_PROVIDER: str = "groq"   # "ollama" | "groq" | "cerebras" | "gemini"
+    ZEN_API_KEY: str = ""
+    ZEN_API_URL: str = "https://opencode.ai/zen/v1/chat/completions"
+    ZEN_MODEL: str = "deepseek-v4-flash-free"
+
+    LLM_PROVIDER: str = "groq"   # "ollama" | "zen" | "groq" | "cerebras" | "gemini"
 
     DEFAULT_TEMPERATURE: float = 0.5
     DEFAULT_MAX_TOKENS: int = 1200
@@ -130,3 +134,7 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+
+

@@ -163,8 +163,13 @@ async def call_ai(
                 sum(len(str(m.get("content", ""))) for m in messages), latency_ms,
             )
             return {"content": content, "usage": data.get("usage", {}), "events": [event]}
-        except AIConfigurationError:
-            raise
+        except AIConfigurationError as error:
+            last_error = error
+            logger.warning(
+                "AI route target misconfigured task=%s provider=%s model=%s error=%s",
+                task_key, provider.code, model.external_id, error,
+            )
+            continue
         except httpx.HTTPStatusError as error:
             if error.response.status_code in {400, 401, 403, 404, 405, 409, 415, 422}:
                 logger.warning(
@@ -331,8 +336,13 @@ async def stream_call_ai(
                 }
             return
 
-        except AIConfigurationError:
-            raise
+        except AIConfigurationError as error:
+            last_error = error
+            logger.warning(
+                "AI route target misconfigured task=%s provider=%s model=%s error=%s",
+                task_key, provider.code, model.external_id, error,
+            )
+            continue
         except httpx.HTTPStatusError as error:
             if (
                 error.response.status_code in {400, 401, 403, 404, 405, 409, 415, 422}

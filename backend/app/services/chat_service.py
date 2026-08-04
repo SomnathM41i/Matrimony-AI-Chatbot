@@ -122,6 +122,7 @@ SUGGESTION_ROUTES: dict[str, dict] = {
     },
     "पुढील प्रोफाइल दाखवा": {
         "intent": "profile_search", "limit": 10, "deterministic": True,
+        "next_batch": True,
     },
     "माझ्या पसंतीनुसार नवीन सर्च": {
         "intent": "profile_search", "limit": 10, "deterministic": True,
@@ -471,6 +472,7 @@ class ChatService:
         viewed_profiles = None
         compared_pairs = None
         last_filters = None
+        search_offset = None
         for m in reversed(msgs):
             if not m.metadata_json:
                 continue
@@ -500,6 +502,8 @@ class ChatService:
                     compared_pairs = metadata.get("compared_pairs")
                 if last_filters is None:
                     last_filters = metadata.get("last_filters")
+                if search_offset is None:
+                    search_offset = metadata.get("search_offset")
             except (TypeError, ValueError):
                 continue
             if None not in (
@@ -507,7 +511,7 @@ class ChatService:
                 profile_candidates, questionnaire_answers,
                 questionnaire_pe_filters, questionnaire_done,
                 questionnaire_searched, last_topic, viewed_profiles,
-                compared_pairs, last_filters,
+                compared_pairs, last_filters, search_offset,
             ):
                 break
 
@@ -537,6 +541,7 @@ class ChatService:
             "viewed_profiles": viewed_profiles,
             "compared_pairs": compared_pairs,
             "last_filters": last_filters,
+            "search_offset": search_offset,
         }
 
     async def _persist_matri_reply(
@@ -896,6 +901,7 @@ class ChatService:
             title = message[:n] + ("..." if len(message) > n else "")
             conv = await self.conv_repo.create(user_id=user_id, title=title)
 
+        conv_id = conv.id
         history, conversation_context = await self._load_history(conv.id)
         conversation_context["default_filters"] = await self._load_user_preferences(user_id)
 
@@ -968,6 +974,7 @@ class ChatService:
                     "selected_reference": route.get("selected_reference"),
                     "fields": route.get("fields"),
                     "biodata_section": route.get("biodata_section"),
+                    "next_batch": route.get("next_batch", False),
                 }
                 if route.get("reset_filters"):
                     conversation_context["accumulated_filters"] = {}
@@ -1087,12 +1094,15 @@ class ChatService:
                     filters = merge_filters(merge_filters(default_filters, accumulated_filters), new_filters)
                     limit = extracted.get("limit", 10)
                     deterministic = bool(extracted.get("deterministic"))
+                    offset = 0
+                    if deterministic and extracted.get("next_batch"):
+                        offset = int(ctx.get("search_offset") or 0)
                     timer.begin("search")
                     yield f"data: {json.dumps({'type': 'status', 'step': 'search'})}\n\n"
-                    sql, params = build_profile_query(filters, limit=limit)
+                    sql, params = build_profile_query(filters, limit=limit, offset=offset)
                     sql_result = await execute_param_query(sql, params)
                     profile_rows = [{"MatriID": r.get("MatriID"), "Name": r.get("Name")} for r in sql_result["rows"] if r.get("Name")]
-                    response_metadata = {"profile_candidates": profile_rows, "selected_profile": profile_rows[0] if profile_rows else None, "accumulated_filters": filters}
+                    response_metadata = {"profile_candidates": profile_rows, "selected_profile": profile_rows[0] if profile_rows else None, "accumulated_filters": filters, "search_offset": offset + len(profile_rows)}
 
                     if deterministic:
                         if sql_result["row_count"] == 0:
@@ -1118,7 +1128,7 @@ class ChatService:
                                     add_photo_url(row)
                                 vector_result = {"sql": "vector_search", "rows": vector_rows, "row_count": len(vector_rows)}
                                 profile_rows = [{"MatriID": r.get("MatriID"), "Name": r.get("Name")} for r in vector_rows if r.get("Name")]
-                                response_metadata = {"profile_candidates": profile_rows, "selected_profile": profile_rows[0] if profile_rows else None, "accumulated_filters": filters}
+                                response_metadata = {"profile_candidates": profile_rows, "selected_profile": profile_rows[0] if profile_rows else None, "accumulated_filters": filters, "search_offset": 0}
                                 timer.begin("format")
                                 yield f"data: {json.dumps({'type': 'status', 'step': 'format'})}\n\n"
                                 async for token, final in stream_format_db_result(message, vector_result, history=history, db=self.db):
@@ -1203,7 +1213,7 @@ class ChatService:
             await self.conv_repo.update(conv, updated_at=datetime.now(timezone.utc))
             await self.db.commit()
             timer.log_summary(intent)
-            yield _done_event(conv.id, assistant_msg.id, usage, response_metadata)
+            yield _done_event(conv_id, assistant_msg.id, usage, response_metadata)
 
         except Exception as e:
             logger.exception("Chat streaming error")
@@ -1214,7 +1224,7 @@ class ChatService:
             except Exception:
                 pass
             reply_text = user_facing_error(e)
-            yield f"data: {json.dumps({'type': 'error', 'content': reply_text, 'conversation_id': conv.id})}\n\n"
+            yield f"data: {json.dumps({'type': 'error', 'content': reply_text, 'conversation_id': conv_id})}\n\n"
     async def process_message(
         self, user_id: int, message: str, conversation_id: int | None = None, user=None
     ) -> dict:

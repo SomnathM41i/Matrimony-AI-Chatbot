@@ -136,6 +136,7 @@ async def health():
                 "groq": "llama-3.3-70b-versatile",
                 "cerebras": "llama-3.3-70b",
                 "gemini": "gemini-2.5-flash",
+                "zen": "deepseek-v4-flash-free",
             }.get(settings.LLM_PROVIDER, "llama-3.3-70b-versatile"),
         },
     }

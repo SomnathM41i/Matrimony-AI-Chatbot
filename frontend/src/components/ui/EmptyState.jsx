@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowUpRight, Bot, Heart, Search, Sparkles } from 'lucide-react'
+import { suggestionHint } from '../../utils/suggestions'
 
 const SUGGESTIONS_LINKED = [
   'माझ्या जोडीदाराच्या पसंती सांगा',
@@ -106,7 +107,14 @@ export default function EmptyState({ onSend, needsMatriId = false }) {
               onClick={() => onSend?.(text)}
               className="group text-xs text-surface-300 bg-surface-800/60 border border-surface-700/60 rounded-xl px-3.5 py-3 text-left hover:bg-surface-800 hover:border-primary-500/40 hover:text-surface-100 transition-all duration-200 flex items-center justify-between gap-2"
             >
-              <span className="leading-snug">{text}</span>
+              <span className="leading-snug">
+                {text}
+                {suggestionHint(text) && (
+                  <span className="block text-[10px] text-surface-500 group-hover:text-surface-400 mt-0.5">
+                    {suggestionHint(text)}
+                  </span>
+                )}
+              </span>
               <ArrowUpRight className="w-3.5 h-3.5 text-surface-600 group-hover:text-primary-400 transition-colors flex-shrink-0" />
             </button>
           ))}

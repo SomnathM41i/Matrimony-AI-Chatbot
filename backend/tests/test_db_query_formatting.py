@@ -109,16 +109,16 @@ class ProfileResultsMarkdownTests(unittest.TestCase):
                        "Caste": "Maratha", "Religion": "Hindu", "Occupation": "Engineer",
                        "Education": "BE", "PhotoURL": f"{BASE}/a.jpg"}]},
         )
-        self.assertIn("1. ![Anita]", text)
+        self.assertIn(f"![Anita]({BASE}/a.jpg)", text)
         self.assertIn("27, Female, Pune", text)
         self.assertIn("Maratha, Hindu, Engineer, BE", text)
 
-    def test_no_photo_uses_dash_line(self):
+    def test_no_photo_uses_placeholder_url(self):
         text = format_profile_results_markdown(
             {},
             {"rows": [{"Name": "Anita", "Age": "27", "PhotoURL": ""}]},
         )
-        self.assertIn("1. Anita — 27", text)
+        self.assertIn(f"![Anita]({BASE}/nophoto.jpg) 27", text)
 
 
 if __name__ == "__main__":

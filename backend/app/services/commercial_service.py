@@ -182,6 +182,44 @@ async def seed_commercial_defaults(db: AsyncSession) -> None:
         db.add(gemini_model)
         await db.flush()
 
+    zen_provider = (await db.execute(select(AIProvider).where(AIProvider.code == "zen"))).scalar_one_or_none()
+    if not zen_provider:
+        zen_provider = AIProvider(
+            code="zen",
+            name="OpenCode Zen",
+            adapter_type="openai_compatible",
+            base_url="https://opencode.ai/zen/v1/chat/completions",
+            api_key_env="",
+            enabled=True,
+            verify_ssl=True,
+            timeout_seconds=60,
+            retry_count=settings.LLM_MAX_RETRIES,
+        )
+        db.add(zen_provider)
+        await db.flush()
+
+    zen_model = (await db.execute(
+        select(AIModel).where(
+            AIModel.provider_id == zen_provider.id,
+            AIModel.external_id == "deepseek-v4-flash-free",
+        )
+    )).scalar_one_or_none()
+    if not zen_model:
+        zen_model = AIModel(
+            provider_id=zen_provider.id,
+            external_id="deepseek-v4-flash-free",
+            display_name="DeepSeek V4 Flash Free",
+            context_window=200000,
+            max_output_tokens=128000,
+            supports_json=True,
+            supports_sql=True,
+            input_cost_paise_per_million=0,
+            output_cost_paise_per_million=0,
+            enabled=True,
+        )
+        db.add(zen_model)
+        await db.flush()
+
     groq_model = (await db.execute(
         select(AIModel).where(
             AIModel.provider_id == provider.id,
@@ -194,6 +232,7 @@ async def seed_commercial_defaults(db: AsyncSession) -> None:
         "groq": groq_model,
         "cerebras": cerebras_model,
         "gemini": gemini_model,
+        "zen": zen_model,
     }
     active_model = provider_model_map.get(settings.LLM_PROVIDER) or groq_model
 

@@ -81,7 +81,7 @@ def _resolve_columns(fields: list[str] | None) -> list[str]:
     return list(dict.fromkeys(cols)) if cols else DETAIL_COLUMNS[:7]
 
 
-def build_profile_query(filters: dict, limit: int = 10) -> tuple[str, list]:
+def build_profile_query(filters: dict, limit: int = 10, offset: int = 0) -> tuple[str, list]:
     conditions = ["LOWER(Status) = LOWER('Active')"]
     params: list[Any] = []
 
@@ -90,8 +90,14 @@ def build_profile_query(filters: dict, limit: int = 10) -> tuple[str, list]:
         if not value:
             continue
         if key in ("education", "occupation"):
-            conditions.append(f"LOWER({column}) LIKE LOWER(%s)")
-            params.append(f"%{value}%")
+            items = [i.strip() for i in str(value).split(",") if i.strip()]
+            if len(items) > 1:
+                clauses = " OR ".join([f"LOWER({column}) LIKE LOWER(%s)"] * len(items))
+                conditions.append(f"({clauses})")
+                params.extend([f"%{i}%" for i in items])
+            else:
+                conditions.append(f"LOWER({column}) LIKE LOWER(%s)")
+                params.append(f"%{items[0] if items else value}%")
         else:
             conditions.append(f"LOWER({column}) = LOWER(%s)")
             params.append(str(value))
@@ -148,6 +154,9 @@ def build_profile_query(filters: dict, limit: int = 10) -> tuple[str, list]:
 
     sql = SEARCH_SSL + f"FROM register WHERE {' AND '.join(conditions)} ORDER BY Regdate DESC LIMIT %s"
     params.append(limit)
+    if offset:
+        sql += " OFFSET %s"
+        params.append(offset)
 
     return sql, params
 

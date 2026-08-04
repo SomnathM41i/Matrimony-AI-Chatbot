@@ -4,6 +4,7 @@ import { fadeIn } from '../../utils/animations'
 import { Bot, CameraOff, RotateCcw, User } from 'lucide-react'
 import ThinkingIndicator from './ThinkingIndicator'
 import { formatTime } from '../../utils/formatter'
+import { suggestionHint } from '../../utils/suggestions'
 
 function ProfileCard({ src, alt, details }) {
   const [imgError, setImgError] = useState(false)
@@ -204,9 +205,14 @@ export default function ChatMessage({ message, onRetry, onSend, streaming, curre
                   key={text}
                   onClick={() => onSend?.(text)}
                   disabled={streaming}
-                  className="inline-flex items-center rounded-full border border-primary-500/30 bg-primary-500/10 px-3 py-1.5 text-xs font-medium text-primary-200 transition-all duration-200 hover:border-primary-400/60 hover:bg-primary-500/20 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="inline-flex flex-col items-center rounded-full border border-primary-500/30 bg-primary-500/10 px-3.5 py-1.5 text-xs font-medium text-primary-200 transition-all duration-200 hover:border-primary-400/60 hover:bg-primary-500/20 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  {text}
+                  <span>{text}</span>
+                  {suggestionHint(text) && (
+                    <span className="text-[10px] font-normal text-primary-300/70 leading-tight">
+                      {suggestionHint(text)}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
