@@ -1,5 +1,57 @@
 # Tasks
 
+## Conversation Flow Enhancement — "Consultant" Track (CF-0..CF-7, 2026-08-02)
+
+Detailed plan: `.agents/modules/conversation-consultant-context.md`.
+
+- [x] CF-0 — MyVivahAI identity + Marathi-first: `ASSISTANT_NAME`/`PLATFORM_NAME` config; identity + language clause in all prompts; new `WELCOME_MESSAGE` (exact copy); branded greetings; persona answer; update greeting-copy tests; add persona/language test
+- [x] CF-1 — Identity gate: first message of new conversation without MatriID → `WELCOME_MESSAGE` + chips; `MATRI_ID_GATE_MODE` soft/hard; `matri_id_prompted` metadata flag
+- [x] CF-2 — Rich profile load + Marathi summary: expand `_fetch_register_row`; `format_user_profile_summary()` (zero-LLM Marathi); show once after link on first-ever conversation
+- [x] CF-3 — Missing-only questionnaire + search-early: `build_nodes(..., missing_only=True)`; `is_viable_search()` per `ONBOARDING_SEARCH_STRATEGY`; search early + refinement chips; onboarding only when zero prior conversations
+- [x] CF-4 — Conversation memory + welcome-back: persist/restore `last_topic`/`viewed_profiles`/`compared_pairs`/`last_filters`; Marathi "परत स्वागत!" + contextual chips
+- [x] CF-5 — Suggestions engine: deterministic `build_suggestions(context)` in `done` events; `SUGGESTION_ROUTES` click handling; chips in `ChatMessage.jsx` + `useChat.js`; dynamic `EmptyState.jsx`
+- [x] CF-6 — Chat-embedded rich biodata: sectioned Marathi biodata + follow-up chips; reuse `resolve_contextual_profile`
+- [x] CF-7 — Tests + verification: new tests per phase; update `test_matri_auto_link.py` + `test_chat_questionnaire_flow.py`; verify `test_session_unification_e2e.py`; suite green; docs updated
+
+## Completed Work
+
+### CF-0..CF-4 — Consultant track: identity + gate + summary + missing-only/search-early + memory/welcome-back (2026-08-02) ✅
+- [x] CF-0: `ASSISTANT_NAME`/`PLATFORM_NAME` in `config.py` + `.env.example`; MyVivahAI + Marathi-first in `BASE_SYSTEM_PROMPT`/`FORMAT`/`INTENT`; `STRUCTURED_EXTRACTION_PROMPT` kept plain + `_EXTRACTION_IDENTITY` prefix at `extraction_service.py` call site; `format_db_notice` + `language_instruction` Marathi-first; `WELCOME_MESSAGE` exact copy; `IDENTITY_RESPONSES` + `_is_identity_question`; streaming greeting shortcut extended; `MyVivahAIIdentityTests` added
+- [x] CF-1: `MATRI_ID_GATE_MODE` soft/hard in `config.py` + `.env.example`; `_apply_identity_gate` in `chat_service.py`; `WELCOME_SUGGESTIONS`; `matri_id_prompted` metadata persisted; `_done_event` carries `suggestions`; `test_identity_gate.py` added
+- [x] CF-2: `REGISTER_PROFILE_COLUMNS`; `format_user_profile_summary()` zero-LLM Marathi; `fetch_partner_expectations` returns `profile` + `pe_summary_mr`; auto-link reply prepends summary; tests added
+- [x] CF-3: `build_nodes(..., missing_only=True)` (chat drops "कायम ठेवा?" confirm nodes); `is_viable_search()` + `ONBOARDING_SEARCH_STRATEGY` (gender_plus_core default); search-early prepends matches once per session (`questionnaire_searched` flag); onboarding auto-start gated on zero prior conversations (`conv_repo.count_by_user`, conversation_id None); tests: `MissingOnlyBuildTests` + `ViableSearchTests` in `test_questionnaire.py`, search-early + zero-prior tests in `test_chat_questionnaire_flow.py`, updated `test_pe_present_flow_starts_at_first_missing_category`
+- [x] CF-4: `_enrich_memory()` annotates assistant metadata with `last_topic`/`viewed_profiles`/`compared_pairs`/`last_filters`; `_load_history` restores them + `questionnaire_searched` (fixes search-early repeat across turns); `handle_profile_comparison` returns `compared_pair`; `_welcome_back()` streams Marathi "परत स्वागत!" prefix + topic-aware chips (`WELCOME_BACK_SUGGESTIONS`/`GENERIC_WELCOME_BACK_SUGGESTIONS`) for a linked returning user on a brand-new conversation; main-flow `done` event now carries metadata via `_done_event`; `test_conversation_memory.py` added (16 tests)
+- [x] CF-5: `build_suggestions(context)` deterministic Marathi chips (matri link / `questionnaire_done` → `QUESTIONNAIRE_DONE_SUGGESTIONS` / last_topic / generic); `SUGGESTION_ROUTES` exact-phrase routing skips LLM extraction entirely (profile_search resume/new/next, comparison, first-candidate detail; `reset_filters` clears accumulated filters); chips injected into every `done` event; `ChatMessage.jsx` renders `message.suggestions` chips; `useChat.js` captures `doneEvent.suggestions` + history `meta.suggestions`; `EmptyState.jsx` suggestions now dynamic by `needsMatriId`; `test_suggestions.py` added (10 tests)
+- [x] CF-6: `BIODATA_SECTIONS` (8 sections) + `_BIODATA_LABELS_MR`/`_BIODATA_EXTRA_LABELS_MR` in `matri_service.py`; zero-LLM `format_profile_section`/`format_profile_biodata` (header + photo + sections, `_clean` skips empty); `BIODATA_SECTION_ROUTES`/`BIODATA_SECTION_CHIPS`; `SUGGESTION_ROUTES` maps every section chip → `profile_detail` + `biodata_section` on the current profile (no LLM); profile_detail branch in `chat_service.py` renders full biodata for `fields=["all"]` and single sections for section chips (replaces the old `_DETAIL_CATEGORY_QUESTION` bounce, constant removed); replies carry `BIODATA_SECTION_CHIPS` suggestions; `test_biodata.py` added (9 tests)
+- [x] CF-7: verified `test_matri_auto_link.py` (link reply = profile/PE summary + missing-only onboarding, not `MATRI_ID_SUCCESS`/confirm-node) + `test_chat_questionnaire_flow.py` (missing-only + search-early) + `test_session_unification_e2e.py` (2 tests green); **strengthened `test_suggestions.py::test_first_candidate_detail_route_resolves_from_candidates`** to assert zero-LLM biodata (LLM formatter must raise; reply contains sectioned biodata; done carries `BIODATA_SECTION_CHIPS`) — this **caught a real bug**: route `selected_index: 0` vs 1-based `resolve_contextual_profile` never resolved a profile; fixed to `1`. Full suite 414 passed / 1 known P9; frontend `npm run build` succeeds
+- [x] Backend suite 414 passed / 1 known P9 failure; frontend `npm run build` succeeds
+
+## Resume P8-P11 (post-CF-7)
+
+- [x] P8 — More tests: `tests/test_db_query_formatting.py` (15 tests) for `add_photo_url`/`_photo_url`/`format_filter_summary`/`format_no_matches_notice`/`format_profile_results_markdown`
+- [x] P9 — Known-failure fix: `test_register_only_fetch` photo URL now derived from `settings.PHOTO_BASE_URL` (`.in` config) instead of hardcoded `.com`; full suite 430 passed / 0 failed
+- [ ] P10 — AI evaluation (live eval harness). Offline harness ✅: `tests/eval_harness.py`, 10 scenarios, `python -m tests.eval_harness` → 10/10
+- [ ] P11 — KVM2 deploy (acceptance + rollout). Runbook ✅: `.agents/modules/deployment-runbook.md`; live execution needs server access/secrets
+
+### P7 — Backend hardening + frontend a11y/streaming watchdog (2026-08-01) ✅
+- [x] Rate limits: profile PATCH 20/m, matri/link 20/m, preference endpoints 20-60/m; conversations GET 60/m, PATCH/DELETE 30/m; admin + commercial-admin 30/m; auth `/refresh` 10/m
+- [x] Schema validation: `profile_schema.py` (name ≤100, profile_image URL/data-image prefix, matri_id ≤15 alphanumeric, questionnaire/filter caps); `chat_schema.py` (message ≤ MAX_MESSAGE_LENGTH, title ≤200)
+- [x] `RequestLoggingMiddleware` in `main.py` (X-Request-ID, access log, SSE-safe)
+- [x] Frontend: 120s streaming watchdog in `useChat.js`; a11y (aria-labels, role=log/alert/status, Login labels/ids/autoComplete, Sidebar aria-expanded)
+- [x] Backend suite 351 passed / 1 known P9 failure; `npm run build` succeeds
+
+## Profile & Partner-Preference Module (2026-07-31) — Phases
+
+Detailed plan: `.agents/PHASES.md`.
+
+- [x] Phase 1 — Backend data layer: `User.matri_id/matri_name/matri_synced_at`, `UserPreference` table, migration, `UserResponse` extension, preference repository
+- [x] Phase 2 — `matri_service.py`: MatriID link/validate, PE summary, saved-search fallback
+- [x] Phase 3 — `core/questionnaire.py` decision tree + start/next/save flow
+- [x] Phase 4 — Chat auto-apply: merge saved preferences as default profile-search filters
+- [x] Phase 5 — `api/profile_routes.py` (JWT-guarded) registered in `main.py`
+- [x] Phase 6 — Frontend `/app/profile` page, `profileService.js`, Sidebar entry, router, useAuth refresh
+- [x] Phase 7 — Tests (`test_matri_service.py`, `test_questionnaire.py`), backend suite, frontend build
+
 ## Completed Work
 
 ### Hybrid RAG Pipeline

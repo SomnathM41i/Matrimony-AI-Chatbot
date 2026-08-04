@@ -64,6 +64,9 @@ class UserResponse(BaseModel):
     is_active: bool = True
     is_verified: bool = False
     profile_image: Optional[str] = None
+    matri_id: Optional[str] = None
+    matri_name: Optional[str] = None
+    matri_synced_at: Optional[datetime] = None
     created_at: datetime
     total_tokens: int = 0
 

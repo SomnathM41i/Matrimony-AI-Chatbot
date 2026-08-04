@@ -86,6 +86,29 @@ Chat route
 - `frontend/src/services/`: backend API clients.
 - `frontend/src/hooks/`: query/mutation state.
 
+## Profile & Partner-Preference Flow (2026-07-31)
+
+```text
+/app/profile (Edit Profile)
+  |-- PATCH /api/profile            name / profile_image / MatriID
+  |-- POST /api/profile/matri/link  validate MatriID -> read-only MySQL:
+  |                                   register.PE_* (primary)
+  |                                   -> advance_saveandsearch / basic_saveandsearch (fallback)
+  |-- POST /api/profile/preference/start|next   rule-based decision tree (ZERO LLM calls)
+  |-- GET|DELETE /api/profile/preference       saved filters
+  v
+user_preferences (SQLite: filter_key/value/source)
+  v
+Chat profile_search: saved preferences merge into accumulated_filters as defaults
+  -> fewer LLM extraction calls, more relevant results
+```
+
+- Preferences live in the app SQLite DB; the matrimony MySQL DB is never written to.
+- Decision-tree questions/options map directly to `DEFAULT_FILTERS` keys so answers become
+  `build_profile_query` filters with no LLM involved.
+- Known PE values are shown as "Keep / Change / Skip" confirm steps; only "Any"/empty
+  categories get fresh questions.
+
 ## Data Relationships (Target)
 
 - User 1 -> many Subscriptions.

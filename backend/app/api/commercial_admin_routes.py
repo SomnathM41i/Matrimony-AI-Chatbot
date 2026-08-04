@@ -1,5 +1,5 @@
 import json
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional, List
 from sqlalchemy import delete, select
@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.ai.gateway import call_ai, test_ai_model
+from app.core.limiter import limiter
 from app.dependencies import get_db, require_admin
 from app.models.commercial_model import (
     AIModel,
@@ -20,6 +21,8 @@ from app.models.user_model import User
 from app.services.commercial_service import add_audit
 
 router = APIRouter(prefix="/api/admin/commercial", tags=["admin-commercial"])
+
+ADMIN_LIMIT = "30/minute"
 
 
 class ProviderInput(BaseModel):
@@ -77,13 +80,15 @@ def model_dict(item: AIModel) -> dict:
 
 
 @router.get("/providers")
-async def providers(db: AsyncSession = Depends(get_db), admin: User = Depends(require_admin)):
+@limiter.limit(ADMIN_LIMIT)
+async def providers(request: Request, db: AsyncSession = Depends(get_db), admin: User = Depends(require_admin)):
     items = (await db.execute(select(AIProvider).order_by(AIProvider.id))).scalars().all()
     return [provider_dict(item) for item in items]
 
 
 @router.post("/providers")
-async def create_provider(body: ProviderInput, db: AsyncSession = Depends(get_db), admin: User = Depends(require_admin)):
+@limiter.limit(ADMIN_LIMIT)
+async def create_provider(request: Request, body: ProviderInput, db: AsyncSession = Depends(get_db), admin: User = Depends(require_admin)):
     values = body.model_dump()
     values["code"] = body.code.strip().lower()
     item = AIProvider(**values)
@@ -95,7 +100,8 @@ async def create_provider(body: ProviderInput, db: AsyncSession = Depends(get_db
 
 
 @router.patch("/providers/{provider_id}")
-async def update_provider(provider_id: int, body: ProviderInput, db: AsyncSession = Depends(get_db), admin: User = Depends(require_admin)):
+@limiter.limit(ADMIN_LIMIT)
+async def update_provider(request: Request, provider_id: int, body: ProviderInput, db: AsyncSession = Depends(get_db), admin: User = Depends(require_admin)):
     item = await db.get(AIProvider, provider_id)
     if not item:
         raise HTTPException(status_code=404, detail="Provider not found")
@@ -109,13 +115,15 @@ async def update_provider(provider_id: int, body: ProviderInput, db: AsyncSessio
 
 
 @router.get("/models")
-async def models(db: AsyncSession = Depends(get_db), admin: User = Depends(require_admin)):
+@limiter.limit(ADMIN_LIMIT)
+async def models(request: Request, db: AsyncSession = Depends(get_db), admin: User = Depends(require_admin)):
     items = (await db.execute(select(AIModel).options(selectinload(AIModel.provider)).order_by(AIModel.id))).scalars().all()
     return [model_dict(item) for item in items]
 
 
 @router.post("/models")
-async def create_model(body: ModelInput, db: AsyncSession = Depends(get_db), admin: User = Depends(require_admin)):
+@limiter.limit(ADMIN_LIMIT)
+async def create_model(request: Request, body: ModelInput, db: AsyncSession = Depends(get_db), admin: User = Depends(require_admin)):
     provider = await db.get(AIProvider, body.provider_id)
     if not provider:
         raise HTTPException(status_code=404, detail="Provider not found")
@@ -129,7 +137,8 @@ async def create_model(body: ModelInput, db: AsyncSession = Depends(get_db), adm
 
 
 @router.patch("/models/{model_id}")
-async def update_model(model_id: int, body: ModelInput, db: AsyncSession = Depends(get_db), admin: User = Depends(require_admin)):
+@limiter.limit(ADMIN_LIMIT)
+async def update_model(request: Request, model_id: int, body: ModelInput, db: AsyncSession = Depends(get_db), admin: User = Depends(require_admin)):
     item = await db.get(AIModel, model_id)
     if not item:
         raise HTTPException(status_code=404, detail="Model not found")
@@ -144,7 +153,8 @@ async def update_model(model_id: int, body: ModelInput, db: AsyncSession = Depen
 
 
 @router.post("/models/{model_id}/test")
-async def test_model(model_id: int, db: AsyncSession = Depends(get_db), admin: User = Depends(require_admin)):
+@limiter.limit(ADMIN_LIMIT)
+async def test_model(request: Request, model_id: int, db: AsyncSession = Depends(get_db), admin: User = Depends(require_admin)):
     item = (
         await db.execute(select(AIModel).options(selectinload(AIModel.provider)).where(AIModel.id == model_id))
     ).scalar_one_or_none()
@@ -154,7 +164,8 @@ async def test_model(model_id: int, db: AsyncSession = Depends(get_db), admin: U
 
 
 @router.get("/routes")
-async def routes(db: AsyncSession = Depends(get_db), admin: User = Depends(require_admin)):
+@limiter.limit(ADMIN_LIMIT)
+async def routes(request: Request, db: AsyncSession = Depends(get_db), admin: User = Depends(require_admin)):
     items = (
         await db.execute(select(AITaskRoute).options(selectinload(AITaskRoute.targets).selectinload(AITaskTarget.model)).order_by(AITaskRoute.task_key))
     ).scalars().all()
@@ -173,7 +184,8 @@ async def routes(db: AsyncSession = Depends(get_db), admin: User = Depends(requi
 
 
 @router.put("/routes/{task_key}")
-async def publish_route(task_key: str, body: RouteInput, db: AsyncSession = Depends(get_db), admin: User = Depends(require_admin)):
+@limiter.limit(ADMIN_LIMIT)
+async def publish_route(request: Request, task_key: str, body: RouteInput, db: AsyncSession = Depends(get_db), admin: User = Depends(require_admin)):
     if task_key != body.task_key:
         raise HTTPException(status_code=400, detail="Task key mismatch")
     selected = (await db.execute(select(AIModel).where(AIModel.id.in_(body.model_ids)))).scalars().all()
@@ -209,7 +221,8 @@ async def publish_route(task_key: str, body: RouteInput, db: AsyncSession = Depe
 
 
 @router.post("/routes/{task_key}/test")
-async def test_route(task_key: str, db: AsyncSession = Depends(get_db), admin: User = Depends(require_admin)):
+@limiter.limit(ADMIN_LIMIT)
+async def test_route(request: Request, task_key: str, db: AsyncSession = Depends(get_db), admin: User = Depends(require_admin)):
     result = await call_ai(
         db, task_key,
         [{"role": "system", "content": "Return a concise test response."}, {"role": "user", "content": "Reply with OK."}],
@@ -219,7 +232,8 @@ async def test_route(task_key: str, db: AsyncSession = Depends(get_db), admin: U
 
 
 @router.get("/usage")
-async def usage(db: AsyncSession = Depends(get_db), admin: User = Depends(require_admin)):
+@limiter.limit(ADMIN_LIMIT)
+async def usage(request: Request, db: AsyncSession = Depends(get_db), admin: User = Depends(require_admin)):
     items = (await db.execute(select(AIUsageEvent).order_by(AIUsageEvent.id.desc()).limit(200))).scalars().all()
     return [
         {"id": item.id, "request_id": item.request_id, "user_id": item.user_id,
@@ -234,7 +248,8 @@ async def usage(db: AsyncSession = Depends(get_db), admin: User = Depends(requir
 
 
 @router.get("/audit")
-async def audit(db: AsyncSession = Depends(get_db), admin: User = Depends(require_admin)):
+@limiter.limit(ADMIN_LIMIT)
+async def audit(request: Request, db: AsyncSession = Depends(get_db), admin: User = Depends(require_admin)):
     items = (await db.execute(select(AdminAuditEvent).order_by(AdminAuditEvent.id.desc()).limit(200))).scalars().all()
     return [
         {"id": item.id, "admin_user_id": item.admin_user_id, "action": item.action,

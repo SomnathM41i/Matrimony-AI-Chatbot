@@ -114,7 +114,7 @@ _KNOWN_PERSONAL_COLUMNS = {
 }
 
 
-def _message_asks_about_unavailable_attribute(message: str) -> bool:
+def message_asks_about_unavailable_attribute(message: str) -> bool:
     msg = message.lower().strip()
     for phrase in _UNKNOWN_PERSONAL_ATTRIBUTES:
         if phrase in msg:
@@ -160,7 +160,7 @@ def _get_pool():
     return _pool
 
 
-def _sync_get_connection():
+def sync_get_connection():
     pool = _get_pool()
     if pool:
         try:
@@ -171,11 +171,11 @@ def _sync_get_connection():
     return mysql.connector.connect(**_build_connection_args())
 
 
-def _sync_safe_query(sql: str, params: tuple | None = None, fetch_one: bool = False):
+def sync_safe_query(sql: str, params: tuple | None = None, fetch_one: bool = False):
     conn = None
     cur = None
     try:
-        conn = _sync_get_connection()
+        conn = sync_get_connection()
         cur = conn.cursor(dictionary=True)
         cur.execute(sql, params or ())
         return cur.fetchone() if fetch_one else cur.fetchall()
@@ -189,9 +189,9 @@ def _sync_safe_query(sql: str, params: tuple | None = None, fetch_one: bool = Fa
             conn.close()
 
 
-def _sync_check_connection() -> bool:
+def sync_check_connection() -> bool:
     try:
-        conn = _sync_get_connection()
+        conn = sync_get_connection()
         conn.ping()
         conn.close()
         return True
@@ -199,7 +199,7 @@ def _sync_check_connection() -> bool:
         return False
 
 
-def _add_photo_url(row: dict):
+def add_photo_url(row: dict):
     photo = row.get("Photo1") or ""
     if photo and photo.lower() != "nophoto.jpg":
         row["PhotoURL"] = settings.PHOTO_BASE_URL.rstrip("/") + "/" + photo.lstrip("/")
@@ -207,12 +207,12 @@ def _add_photo_url(row: dict):
         row["PhotoURL"] = ""
 
 
-def _sync_execute_llm_sql(sql: str) -> dict:
+def sync_execute_llm_sql(sql: str) -> dict:
     sql = validate_select_sql(sql, settings.allowed_tables_set)
-    rows = _sync_safe_query(sql)
+    rows = sync_safe_query(sql)
     clean = sanitize_rows(rows or [])
     for row in clean:
-        _add_photo_url(row)
+        add_photo_url(row)
     return {
         "sql": sql,
         "rows": clean,
@@ -221,16 +221,16 @@ def _sync_execute_llm_sql(sql: str) -> dict:
 
 
 async def check_db_connection() -> bool:
-    return await asyncio.to_thread(_sync_check_connection)
+    return await asyncio.to_thread(sync_check_connection)
 
 
 async def execute_llm_sql(sql: str) -> dict:
-    return await asyncio.to_thread(_sync_execute_llm_sql, sql)
+    return await asyncio.to_thread(sync_execute_llm_sql, sql)
 
 
 def safe_query(sql: str, params: tuple | None = None, fetch_one: bool = False):
     """Synchronous wrapper kept for get_database_stats. Use async functions for new code."""
-    return _sync_safe_query(sql, params, fetch_one)
+    return sync_safe_query(sql, params, fetch_one)
 
 
 def accumulate_usage(*usages):
@@ -242,11 +242,11 @@ def accumulate_usage(*usages):
     return total
 
 
-def _sync_execute_param_query(sql: str, params: list) -> dict:
-    rows = _sync_safe_query(sql, tuple(params))
+def sync_execute_param_query(sql: str, params: list) -> dict:
+    rows = sync_safe_query(sql, tuple(params))
     clean = sanitize_rows(rows or [])
     for row in clean:
-        _add_photo_url(row)
+        add_photo_url(row)
     return {
         "sql": sql,
         "rows": clean,
@@ -255,10 +255,10 @@ def _sync_execute_param_query(sql: str, params: list) -> dict:
 
 
 async def execute_param_query(sql: str, params: list) -> dict:
-    return await asyncio.to_thread(_sync_execute_param_query, sql, params)
+    return await asyncio.to_thread(sync_execute_param_query, sql, params)
 
 
-async def _format_notice_safe(message: str, notice: str, history, db, fallback: str = "") -> str:
+async def format_notice_safe(message: str, notice: str, history, db, fallback: str = "") -> str:
     try:
         from app.services.llm_service import format_db_notice
         result = await format_db_notice(message, notice, history=history, db=db)
@@ -267,12 +267,128 @@ async def _format_notice_safe(message: str, notice: str, history, db, fallback: 
         return fallback or notice
 
 
-def _merge_filters(accumulated: dict | None, new_filters: dict) -> dict:
+def merge_filters(accumulated: dict | None, new_filters: dict) -> dict:
     merged = dict(accumulated or {})
-    for key, value in new_filters.items():
+    for key, value in (new_filters or {}).items():
         if value is not None:
             merged[key] = value
     return merged
+
+
+TOO_MANY_NOTICE = (
+    "सर्चमध्ये {count} परिणाम सापडले, एकाच वेळी सर्व दाखवणे शक्य नाही. "
+    "कृपया अधिक अचूक criteria निवडा."
+)
+
+_MARITAL_MR = {
+    "Unmarried": "कधीही लग्न न केलेले",
+    "Divorced": "घटस्फोटित",
+    "Widowed": "विधवा",
+    "Widower": "विधुर",
+}
+
+_MANGLIK_MR = {"Yes": "मांगलिक", "No": "अमांगलिक"}
+
+_COMPLEXION_MR = {
+    "Very Fair": "अतिशय गोरा",
+    "Fair": "गोरा",
+    "Wheatish": "गहूवर्णी",
+    "Wheatish Medium": "गहूवर्णी मध्यम",
+    "Dark": "सावळा",
+}
+
+_FILTER_SUMMARY_ORDER = [
+    ("marital_status", "वैवाहिक स्थिती"),
+    ("religion", "धर्म"),
+    ("caste", "जात"),
+    ("subcaste", "उपजात"),
+    ("education", "शिक्षण"),
+    ("occupation", "व्यवसाय"),
+    ("city", "स्थान"),
+    ("manglik", "मांगलिक"),
+    ("complexion", "रंग/वर्ण"),
+]
+
+
+def _filter_value_mr(key: str, value) -> str | None:
+    if value is None or value == "":
+        return None
+    if key == "marital_status":
+        return _MARITAL_MR.get(str(value), str(value))
+    if key == "manglik":
+        return _MANGLIK_MR.get(str(value), str(value))
+    if key == "complexion":
+        return _COMPLEXION_MR.get(str(value), str(value))
+    return str(value)
+
+
+def format_filter_summary(filters: dict) -> str:
+    """Marathi, human-readable summary of the non-empty search filters."""
+    parts = []
+    lo, hi = filters.get("age_min"), filters.get("age_max")
+    if lo or hi:
+        parts.append(f"वय {lo or '?'} - {hi or '?'} वर्षे")
+    gender = str(filters.get("gender") or "").lower()
+    if gender:
+        parts.append("मुलगी" if gender.startswith("f") else "मुलगा")
+    for key, label in _FILTER_SUMMARY_ORDER:
+        value = _filter_value_mr(key, filters.get(key))
+        if value:
+            parts.append(f"{label}: {value}")
+    return ", ".join(parts)
+
+
+def format_no_matches_notice(filters: dict) -> str:
+    """Personalized no-match message referencing the active filters and
+    offering concrete next steps."""
+    summary = format_filter_summary(filters)
+    if summary:
+        head = f"सध्या या निकषांना जुळणारी प्रोफाइल सापडली नाही:\n{summary}"
+    else:
+        head = "सध्या या निकषांना जुळणारी प्रोफाइल सापडली नाही."
+    return (
+        f"{head}\n\n"
+        "सल्ला:\n"
+        "- वयोगट थोडा वाढवून पहा (उदा. 18 - 30 वर्षे)\n"
+        "- रंग/वर्ण, मांगलिक किंवा वैवाहिक स्थिती सारख्या पसंती सैल करा\n"
+        "- कमी निकषांसह पुन्हा शोधा, किंवा मला सांगा — \"सैल निकषांनी पर्याय दाखव\""
+    )
+
+
+def format_profile_results_markdown(filters: dict, sql_result: dict) -> str:
+    """Zero-LLM Marathi profile listing that matches the format ChatMessage's
+    splitContent renders as photo cards: `![Name](PhotoURL) Age, Gender, City, ...`."""
+    rows = sql_result.get("rows") or []
+    lines = []
+    count = len(rows)
+
+    ctx = []
+    city = filters.get("city")
+    if city:
+        ctx.append(f"{city} मधील")
+    gender = str(filters.get("gender") or "").lower()
+    if gender == "female":
+        ctx.append("मुलींची")
+    elif gender == "male":
+        ctx.append("मुलांची")
+    if count:
+        lines.append(f"येथे {' '.join(ctx)} {count} प्रोफाइल आहेत:" if ctx else f"येथे {count} जुळणारी प्रोफाइल आहेत:")
+        lines.append("")
+
+    for i, row in enumerate(rows, 1):
+        name = row.get("Name") or "प्रोफाइल"
+        details = ", ".join(
+            str(row.get(k)) for k in
+            ("Age", "Gender", "City", "Caste", "Religion", "Occupation", "Education")
+            if row.get(k)
+        )
+        photo = row.get("PhotoURL") or ""
+        if photo:
+            lines.append(f"{i}. ![{name}]({photo}) {details}")
+        else:
+            lines.append(f"{i}. {name} — {details}")
+
+    return "\n".join(lines)
 
 
 def _build_metadata(profile_rows, filters):
@@ -285,8 +401,8 @@ def _build_metadata(profile_rows, filters):
     return {"accumulated_filters": filters}
 
 
-async def _handle_profile_search(
-    message: str, filters: dict, limit: int, history, db
+async def handle_profile_search(
+    message: str, filters: dict, limit: int, history, db, deterministic: bool = False
 ) -> dict:
     from app.services.query_builder import build_profile_query
     from app.services.llm_service import format_db_result
@@ -301,11 +417,35 @@ async def _handle_profile_search(
     ]
     metadata = _build_metadata(profile_rows, filters)
 
-    if sql_result["row_count"] == 0:
-        try:
-            from app.services.embedding_service import embed_text, build_profile_document
-            from app.services.vector_service import search_with_filters
+    if deterministic:
+        if sql_result["row_count"] == 0:
+            return {
+                "content": format_no_matches_notice(filters),
+                "matched": "none",
+                "is_profile_search": True,
+                "usage": {}, "events": [],
+                "metadata": metadata,
+            }
+        if sql_result["row_count"] > settings.MAX_ROWS_BEFORE_NARROW:
+            return {
+                "content": TOO_MANY_NOTICE.format(count=sql_result["row_count"]),
+                "matched": "too_many",
+                "is_profile_search": True,
+                "usage": {}, "events": [],
+                "metadata": metadata,
+            }
+        return {
+            "content": format_profile_results_markdown(filters, sql_result),
+            "matched": "some",
+            "is_profile_search": True,
+            "usage": {}, "events": [],
+            "metadata": metadata,
+        }
 
+    if sql_result["row_count"] == 0 and settings.VECTOR_FALLBACK_ENABLED:
+        from app.services.embedding_service import embed_text, build_profile_document, unload_embedding_model
+        from app.services.vector_service import search_with_filters
+        try:
             query_text = build_profile_document(filters)
             query_vector = await embed_text(
                 f"query: {message}. {query_text}",
@@ -322,7 +462,7 @@ async def _handle_profile_search(
             )
             if vector_rows:
                 for row in vector_rows:
-                    _add_photo_url(row)
+                    add_photo_url(row)
                 vector_result = {
                     "sql": "vector_search",
                     "rows": vector_rows,
@@ -341,7 +481,7 @@ async def _handle_profile_search(
                 try:
                     formatted = await format_db_result(message, vector_result, history=history, db=db)
                 except Exception:
-                    formatted = {"content": f"Found {len(vector_rows)} matching profiles.", "usage": {}, "events": []}
+                    formatted = {"content": f"{len(vector_rows)} जुळणारी प्रोफाइल सापडली.", "usage": {}, "events": []}
 
                 return {
                     "content": formatted["content"],
@@ -352,31 +492,34 @@ async def _handle_profile_search(
                 }
         except Exception:
             logger.exception("Vector search fallback failed")
+        finally:
+            # Never keep the ~2GB embedding model resident between requests.
+            unload_embedding_model()
 
-        msg = await _format_notice_safe(
+        msg = await format_notice_safe(
             message,
-            "No matching profiles found. Suggest trying a different city, caste, or age range.",
-            history, db, "No matching profiles found.",
+            "कोणतेही योग्य प्रोफाइल सापडले नाही. वेगळे शहर, जात किंवा वयोगट वापरून पाहण्याचा सल्ला द्या.",
+            history, db, "तुमच्या निवडीनुसार कोणतेही योग्य प्रोफाइल सापडले नाही.",
         )
         return {"content": msg, "is_profile_search": True, "usage": {}, "events": [], "metadata": metadata}
 
     if sql_result["row_count"] > settings.MAX_ROWS_BEFORE_NARROW:
-        msg = await _format_notice_safe(
+        msg = await format_notice_safe(
             message,
-            f"The search found {sql_result['row_count']} results, too many to show. Ask the user to add more criteria.",
+            f"सर्चमध्ये {sql_result['row_count']} परिणाम सापडले, खूप जास्त म्हणून सर्व दाखवणे शक्य नाही. अधिक criteria जोडण्याचा सल्ला द्या.",
             history, db,
-            f"The search found {sql_result['row_count']} results, too many to show at once. Please add more specific criteria.",
+            f"सर्चमध्ये {sql_result['row_count']} परिणाम सापडले, एकाच वेळी सर्व दाखवणे शक्य नाही. कृपया अधिक अचूक criteria निवडा.",
         )
         return {"content": msg, "is_profile_search": True, "usage": {}, "events": [], "metadata": metadata}
 
     try:
         formatted = await format_db_result(message, sql_result, history=history, db=db)
     except Exception:
-        msg = await _format_notice_safe(
+        msg = await format_notice_safe(
             message,
-            "Your search returned too many results. Please narrow your search with more specific criteria.",
+            "सर्चमध्ये खूप जास्त परिणाम सापडले. कृपया अधिक अचूक criteria निवडून सर्च अरुंद करा.",
             history, db,
-            "Your search returned too many results for me to process in one go. Please narrow your search.",
+            "सर्चमध्ये खूप जास्त परिणाम सापडले, एकाच वेळी प्रक्रिया करणे शक्य नाही. कृपया सर्च अरुंद करा.",
         )
         return {"content": msg, "is_profile_search": True, "usage": {}, "events": [], "metadata": metadata}
 
@@ -390,19 +533,19 @@ async def _handle_profile_search(
 
 
 _DETAIL_CATEGORY_QUESTION = (
-    "What would you like to know about this profile? I can tell you about:\n\n"
-    "📚 **Education & Career** — education, occupation, income\n"
-    "👨‍👩‍👧‍👦 **Family Details** — parents, siblings, family values\n"
-    "🔮 **Horoscope & Manglik** — star, moon sign, manglik, gotra\n"
-    "📍 **Location** — city, district, state\n"
-    "🏋️ **Physical Attributes** — height, weight, blood group, complexion\n"
-    "🌿 **Lifestyle** — diet, smoking, drinking, hobbies\n"
-    "📷 **Photo & Contact** — photo, mobile number\n\n"
-    "Just tell me which area you're interested in!"
+    "या प्रोफाइलबद्दल तुम्हाला काय जाणून घ्यायचे आहे? मी सांगू शकतो:\n\n"
+    "📚 **शिक्षण व करिअर** — education, occupation, income\n"
+    "👨‍👩‍👧‍👦 **कौटुंबिक माहिती** — parents, siblings, family values\n"
+    "🔮 **जन्मकुंडली व मांगलिक** — star, moon sign, manglik, gotra\n"
+    "📍 **स्थान** — city, district, state\n"
+    "🏋️ **शारीरिक माहिती** — height, weight, blood group, complexion\n"
+    "🌿 **जीवनशैली** — diet, smoking, drinking, hobbies\n"
+    "📷 **फोटो व संपर्क** — photo, mobile number\n\n"
+    "तुम्हाला कोणत्या माहितीत रस आहे ते सांगा!"
 )
 
 
-async def _handle_profile_detail(
+async def handle_profile_detail(
     message: str, fields: list[str] | None, limit: int, history, db,
     selected_profile: dict | None = None,
 ) -> dict:
@@ -412,11 +555,11 @@ async def _handle_profile_detail(
     name = selected_profile.get("Name") if selected_profile else None
 
     if not matri_id and not name:
-        msg = await _format_notice_safe(
+        msg = await format_notice_safe(
             message,
-            "Which profile would you like details about? Please select one first.",
+            "तुम्हाला कोणत्या प्रोफाइलची माहिती हवी आहे? कृपया आधी एक प्रोफाइल निवडा.",
             history, db,
-            "Which profile would you like details about? Please select one first.",
+            "तुम्हाला कोणत्या प्रोफाइलची माहिती हवी आहे? कृपया आधी एक प्रोफाइल निवडा.",
         )
         return {"content": msg, "is_profile_search": False, "usage": {}, "events": [], "metadata": None}
 
@@ -427,20 +570,20 @@ async def _handle_profile_detail(
     sql_result = await execute_param_query(sql, params)
 
     if not sql_result.get("rows"):
-        msg = await _format_notice_safe(message, "Profile not found.", history, db, "Profile not found.")
+        msg = await format_notice_safe(message, "प्रोफाइल सापडली नाही.", history, db, "प्रोफाइल सापडली नाही.")
         return {"content": msg, "is_profile_search": True, "usage": {}, "events": [], "metadata": None}
 
     from app.services.llm_service import format_db_result
 
     for row in sql_result["rows"]:
-        _add_photo_url(row)
+        add_photo_url(row)
 
-    if _message_asks_about_unavailable_attribute(message):
-        msg = await _format_notice_safe(
+    if message_asks_about_unavailable_attribute(message):
+        msg = await format_notice_safe(
             message,
-            "This information is not available in the database.",
+            "ही माहिती डेटाबेसमध्ये उपलब्ध नाही.",
             history, db,
-            "This information is not available in the database.",
+            "ही माहिती डेटाबेसमध्ये उपलब्ध नाही.",
         )
         return {
             "content": msg,
@@ -451,7 +594,7 @@ async def _handle_profile_detail(
     try:
         formatted = await format_db_result(message, sql_result, history=history, db=db)
     except Exception:
-        formatted = {"content": "Here are the profile details.", "usage": {}, "events": []}
+        formatted = {"content": "येथे प्रोफाइलची माहिती आहे.", "usage": {}, "events": []}
 
     return {
         "content": formatted["content"],
@@ -461,6 +604,137 @@ async def _handle_profile_detail(
         "metadata": {
             "selected_profile": selected_profile,
             "accumulated_filters": {},
+        },
+    }
+
+
+_COMPARE_FIELDS = [
+    ("Age", "वय"),
+    ("Gender", "लिंग"),
+    ("Maritalstatus", "वैवाहिक स्थिती"),
+    ("Education", "शिक्षण"),
+    ("Occupation", "व्यवसाय"),
+    ("City", "शहर"),
+    ("Caste", "जात"),
+    ("Religion", "धर्म"),
+    ("Height", "उंची"),
+    ("Annualincome", "वार्षिक उत्पन्न"),
+]
+
+
+def format_profile_comparison(profile_a: dict, profile_b: dict) -> str:
+    """Zero-LLM bilingual comparison table for two profiles. Never invents
+    data — missing columns render as '—'."""
+    name_a = profile_a.get("Name") or "प्रोफाइल 1"
+    name_b = profile_b.get("Name") or "प्रोफाइल 2"
+    lines = [f"प्रोफाइल तुलना:\n1. {name_a}\n2. {name_b}", ""]
+    for col, label in _COMPARE_FIELDS:
+        va = str(profile_a.get(col)) if profile_a.get(col) else "—"
+        vb = str(profile_b.get(col)) if profile_b.get(col) else "—"
+        lines.append(f"{label}: {va} | {vb}")
+    return "\n".join(lines)
+
+
+def resolve_comparison(
+    selected_index: int | None,
+    selected_reference: str | None,
+    candidates: list[dict] | None,
+    current_selected: dict | None,
+) -> tuple[tuple[dict, dict] | None, str | None]:
+    """Resolve the two profiles for a comparison request.
+
+    The explicitly referenced profile ("second", "the CA girl") becomes the
+    second entry; the first entry is the most recently discussed profile, or
+    the first candidate when none has been selected. Returns (pair, None) on
+    success or (None, clarification) when the pair cannot be resolved."""
+    candidates = list(candidates) if candidates else []
+
+    second = None
+    if selected_index is not None:
+        try:
+            idx = int(selected_index) - 1
+            if 0 <= idx < len(candidates):
+                second = candidates[idx]
+        except (ValueError, TypeError):
+            second = None
+    if second is None and selected_reference:
+        ref = str(selected_reference).lower().strip()
+        matches = []
+        for cand in candidates:
+            for key in ["Name", "Occupation", "Education", "City", "Maritalstatus", "Religion", "Caste"]:
+                val = cand.get(key)
+                if val and ref in str(val).lower():
+                    matches.append(cand)
+                    break
+        if len(matches) == 1:
+            second = matches[0]
+        elif len(matches) > 1:
+            names = ", ".join(f"'{c.get('Name')}'" for c in matches if c.get("Name"))
+            return None, f"'{selected_reference}' साठी अनेक जुळणाऱ्या प्रोफाइल आढळल्या: {names}. कोणत्या दोनची तुलना करायची ते सांगा."
+
+    first = current_selected
+    if first is None and candidates:
+        first = candidates[0]
+
+    if first is None or second is None:
+        return None, "कोणत्या दोन प्रोफाइलची तुलना करायची आहे? उदा. 'पहिली आणि दुसरी तुलना करा'."
+
+    a_id = first.get("MatriID")
+    b_id = second.get("MatriID")
+    if a_id and b_id and str(a_id) == str(b_id):
+        return None, "तुम्ही एकाच प्रोफाइलची निवड केली आहे. कृपया दोन वेगळ्या प्रोफाइलचा उल्लेख करा."
+
+    return (first, second), None
+
+
+async def handle_profile_comparison(
+    message: str,
+    selected_index: int | None,
+    selected_reference: str | None,
+    history,
+    db,
+    candidates: list[dict] | None,
+    selected_profile: dict | None,
+) -> dict:
+    from app.services.query_builder import build_detail_query
+
+    pair, clarification = resolve_comparison(
+        selected_index, selected_reference, candidates, selected_profile
+    )
+    if clarification:
+        return {
+            "content": clarification,
+            "is_profile_search": False,
+            "usage": {}, "events": [],
+            "metadata": {
+                "profile_candidates": candidates,
+                "selected_profile": selected_profile,
+            },
+        }
+
+    first, second = pair
+    rows = []
+    for prof in (first, second):
+        matri_id = prof.get("MatriID")
+        name = prof.get("Name")
+        sql, params = build_detail_query(matri_id=matri_id, name=name, fields=["all"], limit=1)
+        sql_result = await execute_param_query(sql, params)
+        row = sql_result["rows"][0] if sql_result.get("rows") else prof
+        add_photo_url(row)
+        rows.append(row)
+
+    return {
+        "content": format_profile_comparison(rows[0], rows[1]),
+        "is_profile_search": False,
+        "usage": {}, "events": [],
+        "metadata": {
+            "profile_candidates": candidates,
+            "selected_profile": second,
+            "cached_profile_data": rows[1],
+            "compared_pair": [
+                {"MatriID": rows[0].get("MatriID"), "Name": rows[0].get("Name")},
+                {"MatriID": rows[1].get("MatriID"), "Name": rows[1].get("Name")},
+            ],
         },
     }
 
@@ -504,7 +778,7 @@ def resolve_contextual_profile(
         elif len(matches) > 1:
             # Multiple matches -> LOW confidence, ask for clarification.
             names = ", ".join([f"'{c.get('Name')}'" for c in matches if c.get("Name")])
-            clarification = f"I found multiple matches for '{selected_reference}': {names}. Which one did you mean?"
+            clarification = f"'{selected_reference}' साठी अनेक जुळणारी प्रोफाइल सापडली: {names}. तुम्हाला कोणती अपेक्षित आहे?"
             return None, clarification
 
     return current_selected, None
@@ -519,12 +793,22 @@ async def answer_database_question_hybrid(
     from app.services.extraction_service import extract_search_params
 
     ctx = conversation_context or {}
-    accumulated_filters = ctx.get("accumulated_filters")
+    accumulated_filters = ctx.get("accumulated_filters") or {}
     selected_profile = ctx.get("selected_profile")
     candidates = ctx.get("profile_candidates")
 
     extraction = await extract_search_params(message, history=history, db=db)
     intent = extraction.get("intent", "general")
+    intent_label = extraction.get("intent_label") or intent
+
+    if intent_label == "comparison":
+        return await handle_profile_comparison(
+            message,
+            extraction.get("selected_index"),
+            extraction.get("selected_reference"),
+            history, db,
+            candidates, selected_profile,
+        )
 
     if intent == "profile_detail":
         selected_index = extraction.get("selected_index")
@@ -547,7 +831,7 @@ async def answer_database_question_hybrid(
             }
 
         selected_profile = resolved
-        result = await _handle_profile_detail(
+        result = await handle_profile_detail(
             message,
             fields=extraction.get("fields"),
             limit=extraction.get("limit", 1),
@@ -562,11 +846,19 @@ async def answer_database_question_hybrid(
     if intent != "profile_search":
         return {"content": None, "is_profile_search": False, "usage": {}, "events": [], "metadata": None}
 
+    default_filters = ctx.get("default_filters") or {}
     new_filters = extraction.get("filters", {})
-    filters = _merge_filters(accumulated_filters, new_filters)
+    filters = merge_filters(merge_filters(default_filters, accumulated_filters), new_filters)
     limit = extraction.get("limit", 10)
 
-    return await _handle_profile_search(message, filters, limit, history, db)
+    return await handle_profile_search(
+        message,
+        filters,
+        limit,
+        history,
+        db,
+        deterministic=bool(extraction.get("deterministic")),
+    )
 
 
 def get_database_stats() -> dict:

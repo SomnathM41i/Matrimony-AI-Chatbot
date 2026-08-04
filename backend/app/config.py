@@ -17,6 +17,14 @@ class Settings(BaseSettings):
                 "Generate a strong key and set it in .env"
             )
         return v
+    ASSISTANT_NAME: str = "MyVivahAI"
+    PLATFORM_NAME: str = "Dishavadhuvar"
+    # "soft": welcome + ask for the MatriID once, then allow guest browsing.
+    # "hard": block all service until a MatriID is linked.
+    MATRI_ID_GATE_MODE: str = "soft"
+    # When the chat onboarding may start searching early (CF-3):
+    #   gender_plus_core (default) | gender_only | full_only
+    ONBOARDING_SEARCH_STRATEGY: str = "gender_plus_core"
     FRONTEND_URL: str = "http://localhost:5173"
     BACKEND_URL: str = "http://localhost:8000"
     DATABASE_URL: str = "sqlite+aiosqlite:///./storage/chatbot.db"
@@ -79,19 +87,22 @@ class Settings(BaseSettings):
     QDRANT_PORT: int = 6333
     EMBEDDING_MODEL: str = "BAAI/bge-m3"
     EMBEDDING_BATCH_SIZE: int = 100
+    # Vector search is an optional fallback used only when SQL returns no
+    # suitable rows. Disable to save RAM (the embedding model is ~2GB).
+    VECTOR_FALLBACK_ENABLED: bool = True
 
-    DB_HOST: str = "localhost"
+    DB_HOST: str = ""
     DB_PORT: int = 3306
-    DB_USER: str = "root"
+    DB_USER: str = ""
     DB_PASSWORD: str = ""
-    DB_NAME: str = "matrimony"
+    DB_NAME: str = ""
     DB_CONNECT_TIMEOUT: int = 10
     DB_SSL_CA: str = ""
     DB_POOL_SIZE: int = 5
 
-    ALLOWED_SQL_TABLES: str = "register,siteconfig,cms,successstory,testimonial,agents,agent_commissions,agent_customers,agent_plan_assignments,agent_sales,agent_withdrawal_requests"
+    ALLOWED_SQL_TABLES: str = "register,siteconfig,cms,successstory,testimonial,banners,news,seo,packages,activity"
 
-    PHOTO_BASE_URL: str = "https://weddingsparampara.com/photo/"
+    PHOTO_BASE_URL: str = "https://dishavadhuvar.in/gallary/"
 
     CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
     MAX_MESSAGE_LENGTH: int = 5000

@@ -15,27 +15,27 @@ import app.services.schema_discovery as schema_discovery
 class VectorFallbackNoticeTests(unittest.IsolatedAsyncioTestCase):
     """The zero-result branch of the vector fallback must not raise."""
 
-    async def test_format_notice_safe_accepts_the_five_arguments_used_by_callers(self):
-        from app.services.db_query_service import _format_notice_safe
+    async def testformat_notice_safe_accepts_the_five_arguments_used_by_callers(self):
+        from app.services.db_query_service import format_notice_safe
 
         with patch(
             "app.services.llm_service.format_db_notice",
             new=AsyncMock(return_value={"content": "translated notice"}),
         ):
-            result = await _format_notice_safe(
+            result = await format_notice_safe(
                 "show me profiles", "No matching profiles found.",
                 [], MagicMock(), "No matching profiles found.",
             )
         self.assertEqual(result, "translated notice")
 
     async def test_notice_falls_back_to_plain_text_when_llm_fails(self):
-        from app.services.db_query_service import _format_notice_safe
+        from app.services.db_query_service import format_notice_safe
 
         with patch(
             "app.services.llm_service.format_db_notice",
             new=AsyncMock(side_effect=RuntimeError("provider down")),
         ):
-            result = await _format_notice_safe(
+            result = await format_notice_safe(
                 "show me profiles", "No matching profiles found.",
                 [], MagicMock(), "fallback text",
             )

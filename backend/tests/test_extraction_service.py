@@ -8,8 +8,10 @@ from app.services.extraction_service import (
     is_likely_profile_message,
     _is_detail_query,
     _keyword_fallback,
+    _normalize_intent,
     extract_search_params,
     DEFAULT_FILTERS,
+    VALID_INTENTS,
 )
 
 
@@ -212,8 +214,10 @@ class ExtractSearchParamsTests(unittest.IsolatedAsyncioTestCase):
         mock_response = {
             "content": '{"intent": "profile_search", "filters": {"gender": "Female", "caste": "Maratha"}, "limit": 10}'
         }
+        # "show maratha girls" is now answered by the deterministic fast path,
+        # so use a vague message that still needs the LLM.
         with patch("app.services.extraction_service.call_groq", new=AsyncMock(return_value=mock_response)):
-            result = await extract_search_params("show maratha girls")
+            result = await extract_search_params("show me profiles please")
             self.assertEqual(result["intent"], "profile_search")
             self.assertEqual(result["filters"]["gender"], "Female")
             self.assertEqual(result["filters"]["caste"], "Maratha")
@@ -247,6 +251,194 @@ class ExtractSearchParamsTests(unittest.IsolatedAsyncioTestCase):
         with patch("app.services.extraction_service.call_groq", new=AsyncMock(side_effect=RuntimeError("fail"))):
             result = await extract_search_params("her")
             self.assertEqual(result["intent"], "profile_detail")
+
+
+class IntentClassificationTests(unittest.IsolatedAsyncioTestCase):
+    """Intent classification across the explicit intent vocabulary.
+
+    The LLM response and the TF-IDF router are mocked (and the deterministic
+    rule-based fast path is bypassed) so the parse-and-normalize pipeline is
+    exercised deterministically regardless of language or script."""
+
+    def _llm(self, payload: str):
+        return patch(
+            "app.services.extraction_service.call_groq",
+            new=AsyncMock(return_value={"content": payload}),
+        )
+
+    def _router(self):
+        return patch(
+            "app.services.extraction_service.router.route",
+            new=MagicMock(return_value=("database", 0.0)),
+        )
+
+    def _no_rules(self):
+        return patch(
+            "app.services.extraction_service.rule_based_extract",
+            new=MagicMock(return_value=None),
+        )
+
+    async def _classify(self, message: str, payload: str) -> dict:
+        with self._router(), self._no_rules(), self._llm(payload):
+            return await extract_search_params(message)
+
+    async def test_intent_vocabulary_covered(self):
+        self.assertEqual(
+            VALID_INTENTS,
+            {
+                "profile_search", "profile_detail", "comparison", "biodata",
+                "membership", "greeting", "follow_up", "general", "admin",
+            },
+        )
+
+    async def test_biodata_routes_to_profile_detail(self):
+        result = await self._classify(
+            "show me her biodata",
+            '{"intent": "biodata", "fields": ["all"]}',
+        )
+        self.assertEqual(result["intent"], "profile_detail")
+        self.assertEqual(result["intent_label"], "biodata")
+        self.assertEqual(result["fields"], ["all"])
+
+    async def test_comparison_kept_as_label_routes_general(self):
+        result = await self._classify(
+            "compare her with the first profile",
+            '{"intent": "comparison", "selected_index": 1}',
+        )
+        self.assertEqual(result["intent"], "general")
+        self.assertEqual(result["intent_label"], "comparison")
+        self.assertEqual(result["selected_index"], 1)
+
+    async def test_follow_up_with_index_routes_to_detail(self):
+        result = await self._classify(
+            "what about the second one",
+            '{"intent": "follow_up", "selected_index": 2}',
+        )
+        self.assertEqual(result["intent"], "profile_detail")
+        self.assertEqual(result["intent_label"], "follow_up")
+        self.assertEqual(result["selected_index"], 2)
+
+    async def test_follow_up_without_reference_routes_general(self):
+        result = await self._classify(
+            "and the next one",
+            '{"intent": "follow_up"}',
+        )
+        self.assertEqual(result["intent"], "general")
+        self.assertEqual(result["intent_label"], "follow_up")
+
+    async def test_membership_label(self):
+        result = await self._classify(
+            "what are your membership plans",
+            '{"intent": "membership"}',
+        )
+        self.assertEqual(result["intent"], "general")
+        self.assertEqual(result["intent_label"], "membership")
+
+    async def test_admin_label(self):
+        result = await self._classify(
+            "how can I contact the site admin",
+            '{"intent": "admin"}',
+        )
+        self.assertEqual(result["intent"], "general")
+        self.assertEqual(result["intent_label"], "admin")
+
+    async def test_greeting_label(self):
+        result = await self._classify(
+            "hello there",
+            '{"intent": "greeting"}',
+        )
+        self.assertEqual(result["intent"], "general")
+        self.assertEqual(result["intent_label"], "greeting")
+
+    async def test_unknown_intent_defaults_general(self):
+        result = await self._classify(
+            "whatever this is",
+            '{"intent": "stats"}',
+        )
+        self.assertEqual(result["intent"], "general")
+        self.assertEqual(result["intent_label"], "general")
+
+    async def test_normalize_intent_mapping(self):
+        self.assertEqual(_normalize_intent("profile_search", {}), "profile_search")
+        self.assertEqual(_normalize_intent("profile_detail", {}), "profile_detail")
+        self.assertEqual(_normalize_intent("biodata", {}), "profile_detail")
+        self.assertEqual(_normalize_intent("follow_up", {"selected_index": 3}), "profile_detail")
+        self.assertEqual(_normalize_intent("follow_up", {}), "general")
+        self.assertEqual(_normalize_intent("comparison", {}), "general")
+        self.assertEqual(_normalize_intent("membership", {}), "general")
+        self.assertEqual(_normalize_intent("greeting", {}), "general")
+        self.assertEqual(_normalize_intent("admin", {}), "general")
+        self.assertEqual(_normalize_intent("general", {}), "general")
+
+    # --- Multilingual / multi-script LLM classification -------------------
+
+    async def test_marathi_profile_search(self):
+        result = await self._classify(
+            "मला पुण्यातील 5 माळी मुली दाखवा",
+            '{"intent": "profile_search", "filters": {"gender": "Female", "city": "Pune", "caste": "Mali"}, "limit": 5}',
+        )
+        self.assertEqual(result["intent"], "profile_search")
+        self.assertEqual(result["filters"]["gender"], "Female")
+        self.assertEqual(result["filters"]["caste"], "Mali")
+        self.assertEqual(result["filters"]["city"], "Pune")
+        self.assertEqual(result["limit"], 5)
+
+    async def test_hindi_profile_search(self):
+        result = await self._classify(
+            "मुझे मुंबई में लड़की चाहिए",
+            '{"intent": "profile_search", "filters": {"gender": "Female", "city": "Mumbai"}, "limit": 10}',
+        )
+        self.assertEqual(result["intent"], "profile_search")
+        self.assertEqual(result["filters"]["gender"], "Female")
+        self.assertEqual(result["filters"]["city"], "Mumbai")
+
+    async def test_hinglish_profile_detail(self):
+        result = await self._classify(
+            "uska education kya hai",
+            '{"intent": "profile_detail", "fields": ["education"], "limit": 1}',
+        )
+        self.assertEqual(result["intent"], "profile_detail")
+        self.assertEqual(result["fields"], ["education"])
+        self.assertEqual(result["limit"], 1)
+
+    async def test_mixed_language_follow_up(self):
+        result = await self._classify(
+            "तिसरी वाली कोण आहे",
+            '{"intent": "follow_up", "selected_index": 3}',
+        )
+        self.assertEqual(result["intent"], "profile_detail")
+        self.assertEqual(result["selected_index"], 3)
+
+    async def test_marathi_greeting_fast_path(self):
+        # Exact-match fast path: no LLM call, intent stays general.
+        with patch("app.services.extraction_service.call_groq", new=AsyncMock()) as mock:
+            result = await extract_search_params("नमस्कार")
+            mock.assert_not_awaited()
+        self.assertEqual(result["intent"], "general")
+
+    async def test_nri_filter_kept_by_validation(self):
+        result = await self._classify(
+            "show me NRI boys",
+            '{"intent": "profile_search", "filters": {"gender": "Male", "nri": true}, "limit": 10}',
+        )
+        self.assertEqual(result["intent"], "profile_search")
+        self.assertEqual(result["filters"]["gender"], "Male")
+        self.assertTrue(result["filters"]["nri"])
+
+    async def test_divorced_filter_kept_by_validation(self):
+        result = await self._classify(
+            "show divorced girls",
+            '{"intent": "profile_search", "filters": {"gender": "Female", "marital_status": "Divorced"}, "limit": 10}',
+        )
+        self.assertEqual(result["intent"], "profile_search")
+        self.assertEqual(result["filters"]["marital_status"], "Divorced")
+
+    async def test_country_filter_kept_by_validation(self):
+        result = await self._classify(
+            "find girls settled in usa",
+            '{"intent": "profile_search", "filters": {"gender": "Female", "country": "USA"}, "limit": 10}',
+        )
+        self.assertEqual(result["filters"]["country"], "USA")
 
 
 if __name__ == "__main__":

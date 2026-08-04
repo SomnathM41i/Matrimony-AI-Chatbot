@@ -65,8 +65,8 @@ async def reindex_all():
 
         points = []
         for row, vec in zip(batch_rows, batch_embs):
-            from app.services.db_query_service import _add_photo_url
-            _add_photo_url(row)
+            from app.services.db_query_service import add_photo_url
+            add_photo_url(row)
             points.append({
                 "MatriID": row.get("MatriID", ""),
                 "_vector": vec,

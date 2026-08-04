@@ -30,6 +30,7 @@ async def send_message(
             user_id=user.id,
             message=body.message.strip(),
             conversation_id=body.conversation_id,
+            user=user,
         )
         await db.commit()
         return ChatResponse(
@@ -67,6 +68,7 @@ async def send_message_stream(
             user_id=user.id,
             message=body.message.strip(),
             conversation_id=body.conversation_id,
+            user=user,
         ),
         media_type="text/event-stream",
         headers={

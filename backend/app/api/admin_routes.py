@@ -1,6 +1,6 @@
 import asyncio
 from datetime import datetime, timezone, timedelta
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc
 from app.dependencies import get_db, require_admin
@@ -8,6 +8,9 @@ from app.models.user_model import User
 from app.models.conversation_model import Conversation
 from app.models.chat_model import ChatMessage
 from app.services.db_query_service import safe_query, check_db_connection, get_database_stats
+from app.core.limiter import limiter
+
+ADMIN_LIMIT = "30/minute"
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -20,7 +23,8 @@ def _aware(value: datetime) -> datetime:
 # ─── Dashboard Stats ───────────────────────────────────────
 
 @router.get("/stats")
-async def stats(admin: User = Depends(require_admin)):
+@limiter.limit(ADMIN_LIMIT)
+async def stats(request: Request, admin: User = Depends(require_admin)):
     db_stats = await asyncio.to_thread(get_database_stats)
     return db_stats
 
@@ -28,7 +32,9 @@ async def stats(admin: User = Depends(require_admin)):
 # ─── App Users ──────────────────────────────────────────────
 
 @router.get("/users")
+@limiter.limit(ADMIN_LIMIT)
 async def list_users(
+    request: Request,
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     search: str = Query("", max_length=100),
@@ -70,7 +76,9 @@ async def list_users(
 
 
 @router.patch("/users/{user_id}")
+@limiter.limit(ADMIN_LIMIT)
 async def update_user(
+    request: Request,
     user_id: int,
     body: dict,
     db: AsyncSession = Depends(get_db),
@@ -91,7 +99,9 @@ async def update_user(
 
 
 @router.delete("/users/{user_id}")
+@limiter.limit(ADMIN_LIMIT)
 async def delete_user(
+    request: Request,
     user_id: int,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
@@ -113,7 +123,9 @@ async def delete_user(
 PROFILE_FIELDS = "MatriID, Name, Age, Gender, Maritalstatus, Religion, Caste, City, Dist, State, Education, Occupation, Annualincome, Height, Mobile, Status, Photo1"
 
 @router.get("/profiles")
+@limiter.limit(ADMIN_LIMIT)
 async def list_profiles(
+    request: Request,
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     search: str = Query("", max_length=100),
@@ -160,7 +172,8 @@ async def list_profiles(
 
 
 @router.get("/profiles/{matri_id}")
-async def get_profile(matri_id: str, admin: User = Depends(require_admin)):
+@limiter.limit(ADMIN_LIMIT)
+async def get_profile(request: Request, matri_id: str, admin: User = Depends(require_admin)):
     sql = f"SELECT {PROFILE_FIELDS} FROM register WHERE MatriID = %s"
     row = await asyncio.to_thread(safe_query, sql, (matri_id,), True)
     if not row:
@@ -169,7 +182,9 @@ async def get_profile(matri_id: str, admin: User = Depends(require_admin)):
 
 
 @router.patch("/profiles/{matri_id}/status")
+@limiter.limit(ADMIN_LIMIT)
 async def update_profile_status(
+    request: Request,
     matri_id: str,
     body: dict,
     admin: User = Depends(require_admin),
@@ -178,11 +193,11 @@ async def update_profile_status(
     if new_status not in ("Active", "Banned", "Paid", "Inactive"):
         raise HTTPException(status_code=400, detail="Invalid status. Use: Active, Banned, Paid, Inactive")
     sql = "UPDATE register SET Status=%s WHERE MatriID=%s"
-    from app.services.db_query_service import _sync_safe_query as sync_query
+    from app.services.db_query_service import sync_safe_query as sync_query
     conn = None
     try:
-        from app.services.db_query_service import _sync_get_connection
-        conn = _sync_get_connection()
+        from app.services.db_query_service import sync_get_connection
+        conn = sync_get_connection()
         cur = conn.cursor()
         cur.execute(sql, (new_status, matri_id))
         conn.commit()
@@ -199,7 +214,9 @@ async def update_profile_status(
 # ─── Conversations ─────────────────────────────────────────
 
 @router.get("/conversations")
+@limiter.limit(ADMIN_LIMIT)
 async def list_all_conversations(
+    request: Request,
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     search: str = Query("", max_length=100),
@@ -261,7 +278,9 @@ async def list_all_conversations(
 
 
 @router.get("/conversations/{conv_id}")
+@limiter.limit(ADMIN_LIMIT)
 async def get_conversation_detail(
+    request: Request,
     conv_id: int,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
@@ -300,7 +319,9 @@ async def get_conversation_detail(
 # ─── System Health ──────────────────────────────────────────
 
 @router.get("/health")
+@limiter.limit(ADMIN_LIMIT)
 async def admin_health(
+    request: Request,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
 ):

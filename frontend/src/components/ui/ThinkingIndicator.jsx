@@ -2,11 +2,11 @@ import { useState, useEffect, useRef } from 'react'
 import { Check, Brain, Database, Sparkles, MessageSquare } from 'lucide-react'
 
 const STEP_LABELS = {
-  analyze: { icon: Brain, label: 'Analyzing your question' },
-  search: { icon: Database, label: 'Searching profiles' },
-  ai_search: { icon: Sparkles, label: 'AI-powered search' },
-  format: { icon: MessageSquare, label: 'Formatting results' },
-  think: { icon: Brain, label: 'Thinking' },
+  analyze: { icon: Brain, label: 'प्रश्न विश्लेषित होत आहे' },
+  search: { icon: Database, label: 'प्रोफाइल शोधल्या जात आहेत' },
+  ai_search: { icon: Sparkles, label: 'AI सहाय्यक शोध' },
+  format: { icon: MessageSquare, label: 'उत्तर तयार होत आहे' },
+  think: { icon: Brain, label: 'विचार करत आहे' },
 }
 
 export default function ThinkingIndicator({ steps }) {
@@ -25,8 +25,8 @@ export default function ThinkingIndicator({ steps }) {
 
   if (!steps || steps.length === 0) {
     return (
-      <div className="flex items-center gap-2">
-        <div className="flex gap-1">
+      <div className="flex items-center gap-2" role="status" aria-label="उत्तर तयार होत आहे">
+        <div className="flex gap-1" aria-hidden="true">
           <span className="w-1.5 h-1.5 bg-primary-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
           <span className="w-1.5 h-1.5 bg-primary-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
           <span className="w-1.5 h-1.5 bg-primary-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
@@ -46,7 +46,7 @@ export default function ThinkingIndicator({ steps }) {
   }
 
   return (
-    <div className="flex flex-col gap-1.5 py-1">
+    <div className="flex flex-col gap-1.5 py-1" role="status">
       {steps.map((s, i) => {
         const config = STEP_LABELS[s.step] || { icon: Brain, label: s.step }
         const Icon = config.icon

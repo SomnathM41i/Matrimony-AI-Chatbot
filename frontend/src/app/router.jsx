@@ -13,6 +13,7 @@ const Login = lazy(() => import('../pages/Login'))
 const Landing = lazy(() => import('../pages/Landing'))
 const Chat = lazy(() => import('../pages/Chat'))
 const History = lazy(() => import('../pages/History'))
+const Profile = lazy(() => import('../pages/Profile'))
 const AdminDashboard = lazy(() => import('../pages/admin/Dashboard'))
 const AdminUsers = lazy(() => import('../pages/admin/Users'))
 const AdminProfiles = lazy(() => import('../pages/admin/Profiles'))
@@ -79,6 +80,7 @@ export const router = createBrowserRouter([
           { path: 'chat', element: loadPage(<Chat />) },
           { path: 'chat/:conversationId', element: loadPage(<Chat />) },
           { path: 'history', element: loadPage(<History />) },
+          { path: 'profile', element: loadPage(<Profile />) },
         ],
       },
       {

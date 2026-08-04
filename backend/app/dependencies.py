@@ -5,9 +5,13 @@ from app.core.auth import get_current_user
 from app.models.user_model import User
 
 
-async def get_db() -> AsyncSession:
-    async for session in get_db_session():
-        yield session
+# get_db must be the SAME dependency callable as get_db_session so that the
+# authenticated `user` object (loaded in get_current_user via get_db_session)
+# lives in the same SQLAlchemy session as the endpoint's `db`. Using two
+# different generator dependencies here created two separate sessions per
+# request, so mutations like user.matri_id = ... (set on the auth session's
+# object) were silently lost when the endpoint committed the other session.
+get_db = get_db_session
 
 
 async def get_authenticated_user(

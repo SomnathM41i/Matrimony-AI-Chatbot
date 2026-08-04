@@ -53,16 +53,18 @@ export default function Login() {
         <form onSubmit={handleSubmit} className="space-y-4">
           {mode === 'register' && (
             <div>
-              <label className="label text-sm text-surface-400 mb-1.5 block">Name</label>
+              <label htmlFor="login-name" className="label text-sm text-surface-400 mb-1.5 block">Name</label>
               <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-500" />
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-500" aria-hidden="true" />
               <input
+                id="login-name"
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 className="input pl-10"
                 placeholder="Your name"
                 required
+                autoComplete="name"
                 maxLength={100}
               />
               </div>
@@ -70,32 +72,36 @@ export default function Login() {
           )}
 
           <div>
-            <label className="label text-sm text-surface-400 mb-1.5 block">Email</label>
+            <label htmlFor="login-email" className="label text-sm text-surface-400 mb-1.5 block">Email</label>
             <div className="relative">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-500" />
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-500" aria-hidden="true" />
               <input
+                id="login-email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="input pl-10"
                 placeholder="you@example.com"
                 required
+                autoComplete="email"
                 maxLength={254}
               />
             </div>
           </div>
 
           <div>
-            <label className="label text-sm text-surface-400 mb-1.5 block">Password</label>
+            <label htmlFor="login-password" className="label text-sm text-surface-400 mb-1.5 block">Password</label>
             <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-500" />
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-500" aria-hidden="true" />
               <input
+                id="login-password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="input pl-10"
                 placeholder="••••••••"
                 required
+                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                 minLength={8}
                 maxLength={72}
               />
@@ -103,7 +109,7 @@ export default function Login() {
           </div>
 
           {error && (
-            <p className="text-red-400 text-sm bg-red-900/20 border border-red-800/30 rounded-lg px-3 py-2">
+            <p role="alert" className="text-red-400 text-sm bg-red-900/20 border border-red-800/30 rounded-lg px-3 py-2">
               {error?.response?.data?.detail || error?.message || 'An error occurred'}
             </p>
           )}

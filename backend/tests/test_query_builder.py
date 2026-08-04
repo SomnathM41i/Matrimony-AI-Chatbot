@@ -90,6 +90,32 @@ class BuildProfileQueryTests(unittest.TestCase):
                 continue
             self.assertIn(f"LOWER({column}) = LOWER(%s)", sql)
 
+    def test_nri_filter_adds_residency_conditions(self):
+        sql, params = build_profile_query({"nri": True})
+        self.assertIn("Residencystatus", sql)
+        self.assertIn("%NRI%", params)
+        self.assertIn("Country", sql)
+        self.assertIn("Nationality", sql)
+
+    def test_country_filter_exact(self):
+        sql, params = build_profile_query({"country": "USA"})
+        self.assertIn("LOWER(Country) = LOWER(%s)", sql)
+        self.assertIn("USA", params)
+
+    def test_nationality_filter_exact(self):
+        sql, params = build_profile_query({"nationality": "Indian"})
+        self.assertIn("LOWER(Nationality) = LOWER(%s)", sql)
+        self.assertIn("Indian", params)
+
+    def test_residency_status_filter_exact(self):
+        sql, params = build_profile_query({"residency_status": "NRI"})
+        self.assertIn("LOWER(Residencystatus) = LOWER(%s)", sql)
+        self.assertIn("NRI", params)
+
+    def test_nri_false_produces_no_condition(self):
+        sql, _ = build_profile_query({"nri": False})
+        self.assertNotIn("Residencystatus", sql)
+
 
 class BuildDetailQueryTests(unittest.TestCase):
     def test_by_matri_id(self):

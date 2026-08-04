@@ -7,7 +7,7 @@
 - Effect: explains why the suite counts as 174 under `unittest` and 175 under `pytest`. The extra test provides no real coverage under either runner; it is a live deployment smoke script that must be run manually against a running server.
 - Affected files: `backend/tests/test_acceptance.py`.
 - Severity: Low for correctness (no product code affected), Medium for process — it is a permanently green test that can never fail.
-- Status: Open. Pre-existing on `main`, not introduced by the performance work. Suggested fix: convert the internal counters to real `assert`s and mark it with a pytest marker (or rename it off the `test_` prefix) so it is not collected in the default unit-test run.
+- Status: **Resolved 2026-08-02 (P11 prep).** Rewritten as a manual deployment smoke script: the function is now `run_acceptance()` (no `test_` prefix, so pytest collects 0 tests from the file — the `--ignore` flag is no longer required), and every check uses a real `_assert` (raises on failure) with a non-zero exit via `__main__`. Run manually with `python -m tests.test_acceptance` (or `python tests/test_acceptance.py`) against a running server. Full suite now: `python -m pytest tests -q` → **430 passed / 0 failed**.
 
 ## Structured chat errors crash the React route
 

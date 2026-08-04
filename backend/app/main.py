@@ -1,4 +1,6 @@
 from contextlib import asynccontextmanager
+import time
+import uuid
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -10,6 +12,56 @@ from app.core.limiter import limiter
 from app.database import create_tables
 
 
+class RequestLoggingMiddleware:
+    """Assigns an X-Request-ID to every request and logs method/path/status/duration.
+
+    Uses a pure ASGI middleware (instead of BaseHTTPMiddleware) so that
+    Server-Sent Events / streaming responses are not buffered.
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        start = time.perf_counter()
+        request_id = None
+        for key, value in scope.get("headers", []):
+            if key == b"x-request-id":
+                request_id = value.decode("latin-1", errors="ignore")[:64] or None
+                break
+        if not request_id:
+            request_id = uuid.uuid4().hex[:12]
+        scope["request_id"] = request_id
+
+        status_code = None
+        method = scope.get("method", "?")
+        path = scope.get("path", "?")
+
+        async def send_wrapper(message):
+            nonlocal status_code
+            if message["type"] == "http.response.start":
+                status_code = message["status"]
+                headers = list(message.get("headers", []))
+                headers.append((b"x-request-id", request_id.encode("latin-1")))
+                message["headers"] = headers
+            await send(message)
+
+        try:
+            await self.app(scope, receive, send_wrapper)
+        finally:
+            duration_ms = round((time.perf_counter() - start) * 1000)
+            code = status_code or 0
+            log_fn = logger.warning if code >= 400 else logger.info
+            log_fn(
+                "http %s %s -> %s [%sms] [req=%s]",
+                method, path, code, duration_ms, request_id,
+            )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info(f"myvivahai Chatbot starting [{settings.APP_ENV}]")
@@ -17,33 +69,6 @@ async def lifespan(app: FastAPI):
 
     from app.services.schema_discovery import refresh_cache
     refresh_cache()
-
-    # Load the embedding model once here instead of inside the first user request.
-    # Runs in a worker thread so startup and /health stay responsive.
-    import asyncio
-    from app.services.embedding_service import warmup_embedding_model
-    # Keep a reference for the lifetime of the app so the task is not garbage collected.
-    app.state.warmup_task = asyncio.create_task(asyncio.to_thread(warmup_embedding_model))
-
-    try:
-        from app.services.vector_service import get_client, COLLECTION_NAME
-        client = get_client(host=settings.QDRANT_HOST, port=settings.QDRANT_PORT)
-        collections = [c.name for c in client.get_collections().collections]
-        if COLLECTION_NAME not in collections:
-            logger.info("Qdrant collection not found, triggering auto re-index...")
-            from app.services.indexing_service import reindex_all
-            await reindex_all()
-        else:
-            col_info = client.get_collection(COLLECTION_NAME)
-            points = getattr(col_info, 'points_count', getattr(col_info, 'vectors_count', 0))
-            if points == 0:
-                logger.info("Qdrant collection empty, triggering auto re-index...")
-                from app.services.indexing_service import reindex_all
-                await reindex_all()
-            else:
-                logger.info(f"Qdrant collection ready ({points} points)")
-    except Exception as e:
-        logger.warning(f"Qdrant not available at startup: {e}")
 
     yield
     logger.info("myvivahai Chatbot shutting down")
@@ -60,6 +85,8 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+app.add_middleware(RequestLoggingMiddleware)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
@@ -73,12 +100,14 @@ from app.api.chat_routes import router as chat_router
 from app.api.history_routes import router as history_router
 from app.api.admin_routes import router as admin_router
 from app.api.commercial_admin_routes import router as commercial_admin_router
+from app.api.profile_routes import router as profile_router
 
 app.include_router(auth_router)
 app.include_router(chat_router)
 app.include_router(history_router)
 app.include_router(admin_router)
 app.include_router(commercial_admin_router)
+app.include_router(profile_router)
 
 
 @app.exception_handler(404)

@@ -30,7 +30,7 @@ class FetchProfilesTests(unittest.TestCase):
 class ReindexAllTests(unittest.IsolatedAsyncioTestCase):
     @patch("app.services.indexing_service.safe_query")
     @patch("app.services.vector_service.get_client")
-    @patch("app.services.db_query_service._add_photo_url")
+    @patch("app.services.db_query_service.add_photo_url")
     @patch("app.services.db_query_service.sanitize_rows")
     @patch("app.services.indexing_service.build_profile_document")
     @patch("app.services.indexing_service.embed_batch")

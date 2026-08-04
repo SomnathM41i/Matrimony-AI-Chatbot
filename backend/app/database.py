@@ -40,6 +40,9 @@ async def create_tables():
                 ("last_activity", "DATETIME", "NULL"),
                 ("role", "VARCHAR(32)", "'user'"),
                 ("token_version", "INTEGER", "0"),
+                ("matri_id", "VARCHAR(15)", "NULL"),
+                ("matri_name", "VARCHAR(256)", "NULL"),
+                ("matri_synced_at", "DATETIME", "NULL"),
             ]:
                 try:
                     sync_conn.execute(text(f"ALTER TABLE users ADD COLUMN {col[0]} {col[1]} DEFAULT {col[2]}"))

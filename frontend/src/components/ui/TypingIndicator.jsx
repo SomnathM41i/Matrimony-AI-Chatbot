@@ -5,12 +5,14 @@ export default function TypingIndicator() {
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
+      role="status"
+      aria-label="उत्तर तयार होत आहे"
       className="flex gap-3"
     >
-      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-surface-700 flex items-center justify-center">
+      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-surface-700 flex items-center justify-center" aria-hidden="true">
         <span className="text-sm">⬡</span>
       </div>
-      <div className="bg-surface-800/80 border border-surface-700/50 rounded-2xl px-4 py-3">
+      <div className="bg-surface-800/80 border border-surface-700/50 rounded-2xl px-4 py-3" aria-hidden="true">
         <div className="flex gap-1.5">
           <motion.span
             className="w-2 h-2 bg-primary-400 rounded-full"

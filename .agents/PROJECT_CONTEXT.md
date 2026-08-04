@@ -29,14 +29,16 @@
 - Chat: `/api/chat` authenticates, validates a message, calls `ChatService`, stores user/assistant messages, commits, and returns usage.
 - **Current (Hybrid RAG) database path**: `extraction_service.py` extracts structured JSON filters (no SQL) → `query_builder.py` builds parameterized SQL → MySQL exact search → Qdrant vector search fallback on zero results → grounded generation.
 - **Legacy database path** (CHAT_ENGINE=legacy): intent classifier decides general vs database → LLM generates SQL → `validate_select_sql` checks it → executes against MySQL → LLM formats results.
+- **Profile & preferences (2026-07-31)**: `/app/profile` lets users edit their profile, link a matrimony `MatriID`, sync partner expectations from `register.PE_*` (saved-search fallback), and run a rule-based decision-tree questionnaire (zero LLM calls). Answers persist to the app SQLite `user_preferences` table and auto-apply as default profile-search filters. Matrimony MySQL stays read-only. See `.agents/PHASES.md`.
 - Authentication: login/register set access and refresh cookies; `/api/auth/refresh` rotates both tokens.
 - Frontend protected routes live under `/app`; admin routes live under `/admin`.
 - Greeting shortcut: simple greetings ("hi", "hello", "namaste") are handled without any LLM call.
 
 ## Database Context
 
-- SQLite application tables: `users`, `conversations`, `chat_messages`.
-- MySQL business tables include `register`, `membershipplan`, `siteconfig`, content/success tables, and agent-related tables.
+- SQLite application tables: `users`, `conversations`, `chat_messages`, `user_preferences`.
+- MySQL business tables include `register`, `membershipplan`, `siteconfig`, content/success tables (current Disha Vadhuvar DB: `82.197.82.66` / `u583780661_dishavadhuvar`, see `.env`).
+- `register` carries partner-expectation fields (`PE_*`, `PartnerExpectations`); `basic_saveandsearch`/`advance_saveandsearch` store saved partner searches keyed by `MatriID`. These are read-only lookup sources for the profile/preference module.
 - Financial, subscription, payment, provider-secret, and internal usage tables must never be exposed through `ALLOWED_SQL_TABLES`.
 - Production subscription and payment mutations must be transactional and concurrency-safe.
 
@@ -55,6 +57,14 @@
 - `backend/app/config.py` — Added: `CHAT_ENGINE` (legacy|hybrid_rag), embedding model config, Qdrant URL.
 - `backend/app/services/db_query_service.py` — Added anti-hallucination pre-formatting guard blocks LLM formatting for unavailable personal attributes (favorite food, appetite, etc.).
 - `backend/app/services/chat_service.py` — Added greeting shortcut (handles hello/hi/namaste without LLM call).
+
+### Profile & Partner-Preference Module (2026-07-31)
+
+- `backend/app/services/matri_service.py` — MatriID validation/linking, PE summary fetch (`register.PE_*`), saved-search fallback (`advance_saveandsearch`, `basic_saveandsearch`).
+- `backend/app/core/questionnaire.py` — rule-based decision-tree questionnaire (JSON tree + flow engine), zero LLM calls.
+- `backend/app/api/profile_routes.py` — JWT-guarded profile/preference endpoints (`PATCH /api/profile`, `POST /api/profile/matri/link`, preference start/next/get/delete).
+- `backend/app/models/user_preference_model.py` — SQLite `user_preferences` (filter_key/value/source rows) + `User.matri_id/matri_name/matri_synced_at`.
+- `frontend/src/pages/Profile.jsx`, `frontend/src/services/profileService.js` — profile edit + questionnaire wizard.
 
 ### Current Module Layout
 

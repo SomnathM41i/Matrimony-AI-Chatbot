@@ -8,6 +8,8 @@ from app.services.embedding_service import (
     embed_text,
     embed_batch,
     get_embedding_dimension,
+    get_embedding_model,
+    unload_embedding_model,
 )
 
 
@@ -105,6 +107,26 @@ class GetEmbeddingDimensionTests(unittest.TestCase):
 
         result = get_embedding_dimension()
         self.assertEqual(result, 1024)
+
+
+class UnloadEmbeddingModelTests(unittest.TestCase):
+    def tearDown(self):
+        unload_embedding_model()
+
+    @patch("app.services.embedding_service.SentenceTransformer", return_value=MagicMock())
+    def test_unload_releases_model(self, ctor):
+        model = get_embedding_model()
+        self.assertIsNotNone(model)
+        unload_embedding_model()
+        # Next call must reload, i.e. the instance must be rebuilt.
+        with patch("app.services.embedding_service.SentenceTransformer", return_value=MagicMock()) as ctor2:
+            second = get_embedding_model()
+        self.assertIsNot(second, model)
+        ctor2.assert_called_once()
+
+    @patch("app.services.embedding_service.SentenceTransformer")
+    def test_unload_when_not_loaded_is_safe(self, _ctor):
+        unload_embedding_model()  # must not raise
 
 
 if __name__ == "__main__":

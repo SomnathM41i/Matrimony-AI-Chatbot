@@ -68,6 +68,7 @@ async def login(request: Request, response: Response, body: LoginRequest, db: As
 
 
 @router.post("/refresh", response_model=dict)
+@limiter.limit("10/minute")
 async def refresh(request: Request, response: Response, db: AsyncSession = Depends(get_db)):
     auth_service = AuthService(UserRepository(db))
     try:

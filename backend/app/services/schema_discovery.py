@@ -8,14 +8,14 @@ LOOKUP_TABLES = {
     "caste": "Caste",
     "caste2": "Caste",
     "religion": "Religion",
-    "education": "Education",
-    "occupation": "Occupation",
-    "occupation2": "Occupation",
+    "education": "edu",
+    "occupation": "occu",
+    "occupation2": "occu",
     "language": "Language",
-    "mother_tounge": "MotherTongue",
-    "maritial_status": "Maritalstatus",
-    "income": "Income",
-    "income1": "Income",
+    "mother_tounge": "mother_tounge",
+    "maritial_status": "status",
+    "income": "income",
+    "income1": "income",
 }
 
 SEARCH_COLUMNS = [
@@ -35,6 +35,7 @@ _schema_context_cache = None
 
 def _sync_fetch_all() -> dict:
     import mysql.connector
+    from collections import defaultdict
 
     conn = mysql.connector.connect(
         host=settings.DB_HOST, port=settings.DB_PORT,
@@ -48,16 +49,21 @@ def _sync_fetch_all() -> dict:
     cur.execute("SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = %s", (settings.DB_NAME,))
     all_tables = [r[0] for r in cur.fetchall() if r[0] != "ignore"]
 
-    for t in all_tables:
-        cur.execute(
-            "SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_KEY "
-            "FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s",
-            (settings.DB_NAME, t),
+    # One round-trip for every table's columns instead of one per table.
+    cur.execute(
+        "SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_KEY "
+        "FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = %s "
+        "ORDER BY TABLE_NAME, ORDINAL_POSITION",
+        (settings.DB_NAME,),
+    )
+    table_columns = defaultdict(list)
+    for table_name, column_name, column_type, is_nullable, column_key in cur.fetchall():
+        if table_name == "ignore":
+            continue
+        table_columns[table_name].append(
+            {"name": column_name, "type": column_type, "nullable": is_nullable == "YES", "key": column_key}
         )
-        info["tables"][t] = [
-            {"name": r[0], "type": r[1], "nullable": r[2] == "YES", "key": r[3]}
-            for r in cur.fetchall()
-        ]
+    info["tables"] = dict(table_columns)
 
     for table, label in LOOKUP_TABLES.items():
         try:

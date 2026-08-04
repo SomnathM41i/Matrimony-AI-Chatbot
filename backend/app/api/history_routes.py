@@ -1,16 +1,19 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.dependencies import get_db, get_authenticated_user
 from app.schemas.chat_schema import UpdateConversationRequest
 from app.schemas.common_schema import SuccessResponse
 from app.services.chat_service import ChatService
 from app.models.user_model import User
+from app.core.limiter import limiter
 
 router = APIRouter(prefix="/api/conversations", tags=["conversations"])
 
 
 @router.get("", response_model=dict)
+@limiter.limit("60/minute")
 async def list_conversations(
+    request: Request,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     user: User = Depends(get_authenticated_user),
@@ -21,7 +24,9 @@ async def list_conversations(
 
 
 @router.get("/{conversation_id}", response_model=dict)
+@limiter.limit("60/minute")
 async def get_conversation(
+    request: Request,
     conversation_id: int,
     user: User = Depends(get_authenticated_user),
     db: AsyncSession = Depends(get_db),
@@ -34,7 +39,9 @@ async def get_conversation(
 
 
 @router.patch("/{conversation_id}", response_model=dict)
+@limiter.limit("30/minute")
 async def update_conversation(
+    request: Request,
     conversation_id: int,
     body: UpdateConversationRequest,
     user: User = Depends(get_authenticated_user),
@@ -52,7 +59,9 @@ async def update_conversation(
 
 
 @router.delete("/{conversation_id}", response_model=SuccessResponse)
+@limiter.limit("30/minute")
 async def delete_conversation(
+    request: Request,
     conversation_id: int,
     user: User = Depends(get_authenticated_user),
     db: AsyncSession = Depends(get_db),

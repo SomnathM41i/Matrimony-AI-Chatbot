@@ -24,3 +24,14 @@ export function truncate(str, len = 60) {
   if (!str) return ''
   return str.length > len ? str.slice(0, len) + '...' : str
 }
+
+export function formatTime(dateString) {
+  if (!dateString) return ''
+  const date = new Date(dateString)
+  if (isNaN(date.getTime())) return ''
+  return date.toLocaleTimeString('en-IN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  })
+}

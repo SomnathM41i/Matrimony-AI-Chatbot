@@ -1,5 +1,461 @@
 # Work Log
 
+## 2026-08-02 — P10 offline AI-eval harness + P11 deployment runbook
+
+- P10: added `tests/eval_harness.py` — an offline, pytest-invisible rubric harness
+  (not collected: no `test_`-prefixed functions). Scores 10 scenarios through the real
+  `ChatService.stream_process_message` with mocked DB/LLM boundaries:
+  guest welcome gate, branded Marathi greeting, identity persona (never "chatbot"),
+  resume-search route (Marathi photo cards, no LLM, topic chips), no-match honesty
+  (no fabricated profiles + सल्ला), first-candidate biodata (zero-LLM sectioned),
+  section-chip drill, welcome-back prefix, LLM-extraction Marathi search, comparison
+  route. Rubric: marathi_first / no_hallucination / routing / deterministic /
+  suggestions / identity. Run: `python -m tests.eval_harness` → **10/10 pass**.
+  (Two scenario bugs were harness-setup issues, not product bugs: identity phrase is
+  "तुम्ही कोण आहात", and gender must live in accumulated filters not default_filters
+  or the questionnaire auto-start hijacks the chip.)
+- P11: wrote `.agents/modules/deployment-runbook.md` — Hostinger KVM2 deploy steps:
+  preflight, `.env` reference (CF vars incl. PHOTO_BASE_URL `.in`, gate soft,
+  `gender_plus_core`), Qdrant install, schema boot + `reindex_profiles.py`, KVM2 2GB
+  bge-m3 memory plan (VECTOR_FALLBACK toggle / KVM4), uvicorn systemd unit, nginx SSE
+  config, `python -m tests.test_acceptance` + `tests.eval_harness` verification, manual
+  smoke checklist, rollback, post-deploy checklist, open constraints.
+- Live P11 execution (server access + secrets) remains with the user.
+
+## 2026-08-02 — P11 prep: acceptance smoke script no longer false-passes
+
+- `tests/test_acceptance.py` rewritten (ISSUES.md open item): the function is now
+  `run_acceptance()` (no `test_` prefix) so pytest collects **0** tests from the file —
+  the `--ignore=tests/test_acceptance.py` flag is no longer needed. Every check uses a
+  real `_assert` that raises on failure; `__main__` exits non-zero on any failure. It
+  stays a manual deployment smoke script: `python -m tests.test_acceptance` against a
+  running server.
+- Full suite: `python -m pytest tests -q` → **430 passed / 0 failed** (no ignore flag).
+
+## 2026-08-02 — P8 more tests + P9 known-failure fix (suite now fully green)
+
+- P8: added `tests/test_db_query_formatting.py` (15 tests) for the deterministic
+  zero-LLM helpers the CF-5/CF-6 routes rely on but which had no direct coverage:
+  `add_photo_url` (config-base URL, leading-slash strip, nophoto.jpg → "", missing → ""),
+  matri `_photo_url`, `format_filter_summary` (age range, मुलगी/मुलगा, Marathi labels,
+  manglik/complexion mappings, empty), `format_no_matches_notice` (filter summary + सल्ला),
+  `format_profile_results_markdown` (context header, numbered photo cards, no-photo dash line).
+- P9: fixed the long-standing known failure `test_matri_service.py::
+  FetchPartnerExpectationsTests::test_register_only_fetch` — it hardcoded
+  `https://dishavadhuvar.com/...` while config default + `.env` both pin
+  `https://dishavadhuvar.in/gallary/` (hcdn CDN; both domains verified serving). Assertion
+  now derives the expected URL from `settings.PHOTO_BASE_URL`, so it can't drift again.
+- Full suite: **430 passed / 0 failed** (was 414 + 1 known P9). Frontend `npm run build`
+  succeeds. P10 (AI eval) and P11 (KVM2 deploy) remain — both need live infra/credentials.
+
+## 2026-08-02 — CF-7: verification + first-candidate detail route bug fix
+
+- Verified the per-phase test files named in the CF-7 plan are already up to date:
+  `test_matri_auto_link.py` (link reply = profile + PE summary + missing-only onboarding,
+  not `MATRI_ID_SUCCESS`/confirm-node), `test_chat_questionnaire_flow.py` (missing-only
+  auto-start, search-early once per session, zero-prior onboarding gate),
+  `test_session_unification_e2e.py` (2 tests green via TestClient).
+- Strengthened `test_suggestions.py::test_first_candidate_detail_route_resolves_from_candidates`:
+  it now patches `stream_format_db_result` to raise (proving CF-6 zero-LLM biodata), asserts
+  the reply contains the sectioned biodata (header + "शिक्षण व करिअर") and that the done
+  event carries `BIODATA_SECTION_CHIPS`.
+- **This caught a real bug**: the "आधी पाहिलेले प्रोफाइल पुन्हा पाहा" route used
+  `selected_index: 0`, but `resolve_contextual_profile` is 1-based (`int(x) - 1`), so the
+  index never matched and the branch fell back to the "तुम्हाला कोणत्या प्रोफाइलची माहिती
+  हवी आहे?" prompt. The old test missed it because it only asserted `done["type"] == "done"`.
+  Fixed the route to `selected_index: 1` (first candidate; falls back to `current_selected`
+  from memory when no candidates).
+- Full suite: 414 passed / 1 known P9; frontend build succeeds. Consultant track CF-0..CF-7 ✅.
+
+## 2026-08-02 — CF-6: chat-embedded rich biodata + section chips
+
+- `matri_service.py`:
+  - `_BIODATA_EXTRA_LABELS_MR` (EducationDetails, Star, Moonsign, Complexion, BloodGroup,
+    Bodytype, Fathersoccupation, Mothersoccupation, noofbrothers, noofsisters, Interests)
+    merged into `_BIODATA_LABELS_MR`.
+  - `BIODATA_SECTIONS` — 8 sections (basic 👤, education 📚, family 👨‍👩‍👧‍👦, physical 🏋️,
+    lifestyle 🌿, horoscope 🔮, partner 🎯, location 📍), each `key`/`emoji`/`title`/`fields`.
+  - `BIODATA_SECTION_ROUTES` (chip `"{emoji} {title}"` → section key) + `BIODATA_SECTION_CHIPS`.
+  - `_format_biodata_section` (bullets, `_clean`-empty values skipped, `_BIODATA_LABELS_MR`
+    fallback to `_PE_LABELS_MR`), `format_profile_section(row, key)` (None when empty),
+    `format_profile_biodata(row)` (header + `_photo_url` + non-empty sections) — zero LLM.
+- `chat_service.py`:
+  - `SUGGESTION_ROUTES` gains every biodata chip → `{"intent": "profile_detail",
+    "fields": ["all"], "biodata_section": key, "selected_index/reference": None,
+    "deterministic": True}`.
+  - Route-built `extracted` carries `biodata_section`.
+  - profile_detail branch: `fields in (None, ["all"])` no longer asks the category question
+    (`_DETAIL_CATEGORY_QUESTION` constant removed) — fetches the full row once (cached on
+    MatriID match) and renders `format_profile_biodata`; a `biodata_section` renders
+    `format_profile_section` (falls back to "या प्रोफाइलसाठी ही माहिती उपलब्ध नाही.").
+    Full/section replies carry `BIODATA_SECTION_CHIPS` suggestions.
+- Tests: `test_biodata.py` (9 tests) — formatter units, chips↔routes coverage, and two
+  stream tests (full biodata deterministic + section chip skips LLM entirely).
+- Suite 414 passed / 1 known P9; frontend build succeeds.
+
+## 2026-08-02 — CF-5: deterministic suggestions engine + SUGGESTION_ROUTES + frontend chips
+
+- `chat_service.py`:
+  - `build_suggestions(context)` — deterministic Marathi follow-up chips, no LLM:
+    no MatriID → `WELCOME_SUGGESTIONS`; `questionnaire_done` →
+    `QUESTIONNAIRE_DONE_SUGGESTIONS`; known `last_topic` → `WELCOME_BACK_SUGGESTIONS`;
+    else `GENERIC_WELCOME_BACK_SUGGESTIONS`. Injected into every `done` event when the
+    reply doesn't already carry chips (gate/welcome-back keep theirs).
+  - `SUGGESTION_ROUTES` — exact-phrase chip routing that bypasses `extract_search_params`
+    entirely (no LLM): resume/new/next-search (deterministic profile_search from memory
+    filters, `reset_filters` clears accumulated), comparison, and first-candidate
+    profile_detail. Questionnaire-topic chip set now fully routed.
+  - `WELCOME_BACK_SUGGESTIONS["questionnaire"]` replaced the unrouted
+    "माझ्या जोडीदाराच्या पसंती बदला" with "मागील सर्च चालू ठेवा" so every chip routes.
+- `db_query_service.py`: unchanged this phase (routing consumes existing paths).
+- Frontend:
+  - `useChat.js`: captures `doneEvent.suggestions` onto the assistant message and reads
+    `meta.suggestions` when loading history (chips persist across reloads).
+  - `ChatMessage.jsx`: renders `message.suggestions` chips (same pill styling as
+    questionnaire options) calling `onSend(text)`.
+  - `EmptyState.jsx`: suggestions now dynamic — `SUGGESTIONS_NO_ID` (MatriID-first) vs
+    `SUGGESTIONS_LINKED` (preference-first) based on `needsMatriId`.
+- Tests: new `tests/test_suggestions.py` (10 tests) — `build_suggestions` matrix,
+  every chip in the actionable sets has a route, and three stream tests proving the
+  route skips LLM extraction (resume search, new-search resets filters, first-candidate
+  detail). Updated `test_conversation_memory.py::test_first_ever_user_gets_no_prefix`
+  (CF-5 now injects generic chips on every reply).
+- Verification: CF suites 123 passed / 1 known P9; full suite → **405 passed / 1 known P9**;
+  frontend `npm run build` succeeds.
+- Next: CF-6 (chat-embedded rich biodata + follow-up chips via `resolve_contextual_profile`).
+
+## 2026-08-02 — CF-4: conversation memory + "परत स्वागत!" welcome-back + contextual chips
+
+- `chat_service.py`:
+  - `_enrich_memory(metadata, intent_label)` annotates assistant metadata with
+    explicit memory fields — `last_topic` (from intent), `viewed_profiles`
+    (derived from `profile_candidates`), `compared_pairs` (from `compared_pair`),
+    `last_filters` (copy of `accumulated_filters`). Never overwrites existing keys.
+  - `_load_history` now restores those fields plus the previously-unrestored
+    `questionnaire_searched` flag — fixing a latent CF-3 issue where search-early
+    could repeat across turns in the same conversation.
+  - `_welcome_back(user, user_id, conversation_id)` returns a Marathi
+    "परत स्वागत, {name}! 🙏" prefix + topic-aware chips for a LINKED user starting
+    a brand-new conversation when they already have prior conversations
+    (`count_by_user > 1` with the current conversation counted). Guests, continuing
+    conversations, and first-ever chats get None. `_last_topic_across_conversations`
+    scans the user's newest conversations for the latest `last_topic` in metadata.
+  - Welcome-back prefix streamed as the first token; suggestions merged into the
+    assistant metadata + `done` event; the main flow's `done` event now goes through
+    `_done_event` so metadata (suggestions etc.) actually reaches the client.
+  - Questionnaire-flow metadata also enriched via `_enrich_memory(..., "questionnaire")`.
+- `db_query_service.py`: `handle_profile_comparison` success metadata now carries
+  `compared_pair` ([{MatriID,Name}, {MatriID,Name}]) so the memory layer can persist it.
+- New `WELCOME_BACK_SUGGESTIONS` per topic (profile_search/profile_detail/comparison/
+  questionnaire) + `GENERIC_WELCOME_BACK_SUGGESTIONS` fallback.
+- Tests: new `tests/test_conversation_memory.py` (16 tests) — `_enrich_memory`
+  derivation/no-overwrite, `_load_history` restore (incl. `questionnaire_searched`),
+  `_welcome_back` guards + topic/generic chips + AsyncMock tolerance, `_last_topic_
+  across_conversations` newest-first scan, and two stream tests (returning user
+  streams prefix + done suggestions + persisted memory; first-ever user gets neither).
+- Verification: CF suites 161 passed / 1 known P9; full suite → **395 passed / 1 known
+  P9** (`test_register_only_fetch`).
+- Next: CF-5 (deterministic suggestions engine + click routing + frontend chips +
+  dynamic `EmptyState.jsx`).
+
+## 2026-08-02 — CF-3: missing-only questionnaire + search-early + zero-prior onboarding
+
+- `core/questionnaire.py`:
+  - `build_nodes(pe_filters, missing_only=True)`: chat onboarding auto-applies known
+    preferences silently and asks only missing categories — no more "कायम ठेवा?"
+    confirm nodes in chat (profile-page path `start_questionnaire`/
+    `advance_questionnaire` still use `missing_only=False`).
+  - New `is_viable_search(filters, strategy)` for the `ONBOARDING_SEARCH_STRATEGY`
+    strategies (`gender_plus_core` default / `gender_only` / `full_only`).
+- `config.py` + `.env.example`: `ONBOARDING_SEARCH_STRATEGY=gender_plus_core`.
+- `chat_service.py`:
+  - `_questionnaire_start(..., missing_only=True)`; `_try_auto_link_matri` uses it and
+    skips the questionnaire start when the user already has prior conversations
+    (`conv_repo.count_by_user`; `isinstance(int)` guard tolerates AsyncMock in unit tests).
+  - `_process_questionnaire` builds nodes with `missing_only=True`; auto-start gated on
+    zero prior conversations (`conversation_id is None` + `count_by_user <= 1`) and now
+    fires whenever there are missing categories (not just when prefs = gender only).
+  - Search-early: after each valid answer, when `is_viable_search` passes for the
+    configured strategy, run `handle_profile_search` once per session and prepend the
+    matches above the next question; persisted `questionnaire_searched` flag prevents
+    repeats; completion still does the final full-filter search.
+- Tests: `MissingOnlyBuildTests` + `ViableSearchTests` (test_questionnaire.py),
+  search-early prepends/once-per-session + zero-prior-skip (test_chat_questionnaire_flow.py),
+  updated `test_pe_present_flow_starts_at_first_missing_category` (test_matri_auto_link.py),
+  fixed stale `test_reask_on_unparsed_answer` assertion ("वयोगट" not "वैवाहिक" — the first
+  missing question for gender-only PE is age_range).
+- Verification: affected suites 99 passed / 1 known P9; full suite → **379 passed / 1 known
+  P9** (`test_register_only_fetch`). Config loads: MyVivahAI soft gender_plus_core.
+- Next: CF-4 (conversation memory + "परत स्वागत!" welcome-back + contextual chips).
+
+## 2026-08-02 — CF-2: rich profile load + zero-LLM Marathi summary
+
+- **PHOTO_BASE_URL discrepancy resolved (verified)**: `.env` pins
+  `https://dishavadhuvar.in/gallary/`; probed a real photo
+  (`2023_07_11_01_31_0431.jpg`) on both domains — **both return 200** (`.com` =
+  LiteSpeed origin, `.in` = hcdn CDN). Not a bug; the known P9 test failure
+  (`test_register_only_fetch` asserting `.com`) stays scheduled for P9.
+- Added `REGISTER_PROFILE_COLUMNS` in `matri_service.py` (rich profile cols +
+  PE cols, deduped) — verified every column exists in the live register table via
+  `INFORMATION_SCHEMA`. `_fetch_register_row` now selects them.
+- Added zero-LLM Marathi summary: `_PROFILE_LABELS_MR` (28 fields),
+  `_PE_LABELS_MR` (18 partner-preference labels), `_extract_profile_summary`,
+  `_extract_pe_summary_mr`, and `format_user_profile_summary()` → "📋 तुमचे
+  प्रोफाइल:" + "🎯 तुमच्या जोडीदाराच्या पसंती:" bullet lists; returns "" when
+  nothing meaningful.
+- `fetch_partner_expectations` now returns `profile` + `pe_summary_mr` (additive);
+  auto-link success reply in `_try_auto_link_matri` prepends the summary before
+  `MATRI_ID_SUCCESS` or the questionnaire opener.
+- Tests: `test_matri_service.py` (+4 unit, +2 asserts in register-only fetch),
+  `test_matri_auto_link.py` (+1 reply-prepends-summary).
+- Verification: affected suites 68 passed / 1 known P9; full suite
+  `pytest tests -q --ignore=tests/test_acceptance.py` → **370 passed / 1 known P9**.
+  Live smoke: `link_matri_id('ES92669')` → Satish Gaikwad Inamdar summary renders.
+- Next: CF-3 (missing-only questionnaire + search-early + zero-prior-onboarding).
+
+## 2026-08-02 — CF-0 + CF-1 implemented and verified
+
+- **CF-0 (MyVivahAI identity + Marathi-first)**: added `ASSISTANT_NAME`/`PLATFORM_NAME`
+  to `config.py` + `.env.example`; rewrote `BASE_SYSTEM_PROMPT` (now an f-string, identity +
+  Marathi-first LANGUAGE RULES + new examples), `FORMAT_SYSTEM_PROMPT`, `INTENT_SYSTEM_PROMPT`,
+  `llm_service.format_db_notice` and both `language_instruction` strings; added
+  `_EXTRACTION_IDENTITY` prefix prepended to `STRUCTURED_EXTRACTION_PROMPT` at the
+  `extraction_service` Tier-3 call site (kept the extraction prompt a plain string — f-string
+  broke on its JSON braces with `ValueError: Invalid format specifier`); added exact
+  `WELCOME_MESSAGE`, `IDENTITY_RESPONSES` + `_is_identity_question()`, rebranded
+  `GREETING_RESPONSES`/`MATRI_ID_PROMPT`; greeting shortcut now also answers persona
+  questions; added `MyVivahAIIdentityTests`; updated greeting-copy assertions.
+- **CF-1 (Identity gate)**: `MATRI_ID_GATE_MODE` (soft/hard) in `config.py` + `.env.example`;
+  new `_apply_identity_gate` in `chat_service.py` — soft: first message of a brand-new
+  conversation with no linked MatriID and a non-ID, non-greeting message → `WELCOME_MESSAGE`
+  + `WELCOME_SUGGESTIONS` chips, persisting `matri_id_prompted` metadata (guest browsing
+  proceeds after); hard: every message blocked until linked; ID-looking messages always fall
+  through to auto-link. `_done_event` now also carries `suggestions` when present. New
+  `tests/test_identity_gate.py` (6 unit + 2 stream). Gate inserted in
+  `stream_process_message` between auto-link and normal processing; reuses `_persist_matri_reply`.
+- Verification: affected suites green (identity gate + questionnaire + e2e + auto-link: 49
+  passed); full backend suite `pytest tests -q --ignore=tests/test_acceptance.py` →
+  **365 passed / 1 known P9 failure** (`test_register_only_fetch`, .com vs .in).
+- Note: console `print` of emoji fails on cp1252 (`UnicodeEncodeError`) — not a code bug;
+  `python -X utf8` prints fine.
+- Next: CF-2 (rich profile load + zero-LLM Marathi summary).
+
+## 2026-08-02 — CF track planned; `.agents/` updated (pre-coding)
+
+- User approved the "Conversation Flow Enhancement — Consultant" track (CF-0..CF-7)
+  and explicitly asked to update the `.agents/` folder first so everything is
+  remembered ("update agents folder according so will remmber all the things and
+  start step by step") — reversing the earlier "forget about agents folder" note.
+- Confirmed decisions (also in `DECISIONS.md`): MyVivahAI identity (parametric via
+  `ASSISTANT_NAME`/`PLATFORM_NAME`), Marathi-first for ALL replies, MatriID gate
+  soft-default with hard behind `MATRI_ID_GATE_MODE`, known prefs auto-apply
+  (never re-ask), search-early via `ONBOARDING_SEARCH_STRATEGY` (default
+  `gender_plus_core`), onboarding only when zero prior conversations, chat-embedded
+  rich biodata.
+- Created `.agents/modules/conversation-consultant-context.md`; added the CF phase
+  table to `PHASES.md`, decisions to `DECISIONS.md`, CF tasks + P7 completion to
+  `TODO.md`. `CHANGELOG.md` pending entry for P7.
+- Noted a PHOTO_BASE_URL discrepancy: `CHANGELOG.md` records
+  `https://dishavadhuvar.com/gallary/` while `config.py:97` shows `.in` — verify
+  before CF-2.
+- Next: CF-0 (identity + Marathi-first), then CF-1..CF-7.
+
+## 2026-07-31 — Root-cause fix: MatriID never persisted, questionnaire hit the LLM
+
+- Live diagnosis: after "MatriID linked: DI80369", a chat answer "कायम ठेवा" was classified by
+  the TF-IDF router as 'database' (LLM path). The DB showed `users.matri_id = NULL` for every
+  user even though prefs/messages saved fine — so the ID never persisted and the chat kept
+  re-asking for it, and on the next request `user.matri_id` was falsy so `_process_questionnaire`
+  skipped (fell through to the LLM router).
+- Two-layer root cause:
+  1. `get_current_user` used `Depends(get_db_session)`; endpoints used `Depends(get_db)` — two
+     different callables → two sessions per request → user-object mutations committed nowhere.
+  2. FastAPI tears down `yield` deps before a StreamingResponse generator runs, so the `user`
+     arrives detached even with a single session.
+- Fixes: `get_db = get_db_session` in `app/dependencies.py` (one session per request) +
+  `ChatService._attach_user` (merges the user back into `self.db` at the top of
+  `stream_process_message`/`process_message`) so `user.matri_id` mutations are tracked/committed.
+- Backfilled the existing dev user (id=3) with `matri_id=DI80369` so no re-link is needed.
+- New tests: `tests/test_session_persistence.py` (3) + `tests/test_session_unification_e2e.py`
+  (real FastAPI app + in-memory DB; proves `/api/auth/me` returns matri_id after auto-link and
+  that "कायम ठेवा" is answered by the questionnaire with zero LLM calls). Backend: **307 passed**;
+  dev server (uvicorn --reload) auto-restarted with the fix.
+
+## 2026-07-31 — Rule-based fast path + clickable questionnaire chips
+
+- `extraction_service.rule_based_extract(message)`: deterministic, zero-LLM extraction for
+  clear profile queries. Handles gender keywords (Devanagari/English female/male), cities via
+  `_CITY_MR_EN` + `_MR_CITY_SUFFIX` suffix matching resolved against the DB
+  (`_resolve_against_db` prefers exact then shortest substring match — fixes "maratha"
+  resolving to "Kokanastha Maratha"), Devanagari/English religion/caste words, `N ते M वर्ष`
+  age ranges, and counts like `N मुली`/`N profiles` (capped at 50). Intercepts only when
+  filters/limit are present OR (profile word + search verb + Devanagari); greetings and detail
+  queries return None; vague English / bare "दाखवा" fall through to the LLM.
+- Wired as extraction Tier 1.5 in `extract_search_params` → `answer_database_question_hybrid`
+  → `_handle_profile_search(deterministic=True)` which formats via
+  `format_profile_results_markdown` (photo cards: `![Name](PhotoURL) Age, Gender, City, …`) with
+  the Marathi no-match/too-many notices. This is what makes "पुण्यातील 5 मुलींची प्रोफाइल दाखवा"
+  answer instantly instead of the ~121s LLM format pass. Questionnaire auto-start now skips when
+  the rule extractor yields a concrete profile answer; questionnaire completion always runs the
+  deterministic branch.
+- Clickable questionnaire option chips: `_questionnaire_start`/`_process_questionnaire` persist
+  `questionnaire_options` + `questionnaire_progress {"current","total"}` in assistant-message
+  `metadata_json` (start/reask/advance). Streaming `done` event gains `questionnaire
+  {options, progress}` via `_done_event`. `get_conversation` messages now carry `metadata`
+  (via new `_safe_metadata`, `history_routes` `response_model=dict`). Frontend `useChat.js`
+  attaches `questionnaire` from load metadata and merges the done-event payload; `ChatMessage.jsx`
+  renders clickable Marathi option pills (`bg-primary-500/10`, hover/active, disabled while
+  streaming) that call the same `onSend` path.
+- Tests: new `tests/test_rule_based_extract.py` (10) covering "पुण्यातील 5 मुलींची प्रोफाइल
+  दाखवा"; `test_chat_questionnaire_flow.py` grew streaming tests (token→done ordering, done
+  `questionnaire.options`, no-options on completion, auto-link done carrying questionnaire) and
+  two metadata tests. Backend suite: **302 passed**. Frontend `npm run build` passes.
+
+## 2026-07-31 — Professional chat UI polish (`/app/chat`)
+
+- Rewrote `ChatMessage.jsx`: user/assistant/error/streaming bubble variants with `Avatar`
+  (gradient user initial vs bot badge), asymmetric rounded corners, per-bubble timestamps
+  (`formatTime` via `en-IN` locale), Marathi retry link on errors, "फोटो नाही" photo
+  placeholder, `max-w-[520px]` bubbles.
+- Rewrote `EmptyState.jsx`: blurred primary glow hero + gradient bot badge, Marathi headline
+  ("नमस्कार, आपले स्वागत आहे!" vs "तुम्ही काय शोधत आहात?"), uppercase MatriID input with
+  inset search icon + "शोधा" button, pink partner-preferences banner linking `/app/profile`,
+  and four Marathi suggestion chips. Prop renamed `onEnterId` → `onSend` (ID form + chips now
+  share one message-send path).
+- Rewrote `Chat.jsx` shell: sticky glass header (brand title + online status, New Chat button,
+  user avatar/name + MatriID state), radial-gradient conversation backdrop, professional
+  composer (auto-resizing textarea, Enter/Shift+Enter hint, gradient send button, streaming
+  stop button, disabled-while-streaming states). Fixed EmptyState to receive `onSend={send}`
+  (the old `onEnterId` prop would have broken ID submission after the rewrite).
+- `ThinkingIndicator.jsx` streaming step labels translated to Marathi.
+- Validation: `npm run build` passes (2,575 modules). Dev server already running on
+  `http://localhost:5173` (PID 27116), so HMR picked the changes up live.
+
+## 2026-07-31 — Guided conversational questionnaire wired into chat
+
+- Auto-link success now starts the guided questionnaire flow in-chat (zero LLM):
+  - PE empty (only gender) → Marathi by-name success + first fresh question (age range).
+  - PE present → by-name success + confirm/keep/change/skip node for the first saved value.
+  - `_try_auto_link_matri` builds the opener via new `_questionnaire_start(pe_filters)` and
+    persists it with `metadata_json`; partner gender is never asked (guarded by requiring
+    `pe_filters.gender` before a flow may start).
+- `ChatService._process_questionnaire(...)` drives the session in both `stream_process_message`
+  and `process_message`:
+  - Active session (`questionnaire_answers` + `questionnaire_pe_filters` in assistant-message
+    `metadata_json`, loaded by `_load_history`) parses each chat answer with
+    `questionnaire_chat.parse_answer` (numbered options, Devanagari digits, Marathi/Hinglish
+    synonyms, custom text, "any") and replies with the next question; unparseable answers get a
+    Marathi re-ask.
+  - Fresh chat + linked MatriID + no meaningful saved prefs (nothing beyond gender) →
+    auto-start from the first question again.
+  - Flow end: saves the final filters via `PreferenceRepository.replace_all(source="questionnaire")`,
+    runs `_handle_profile_search`, and replies with a Marathi by-name confirmation plus the
+    matches. `questionnaire_done` flag prevents re-entry.
+- Session state lives only in `metadata_json` (no schema change); `questionnaire_chat.py`
+  `format_question` now shows `प्रश्न N/M` progress.
+- Remaining English fallback notices in `db_query_service.py` translated to Marathi
+  (no-match, too-many-results, "Profile not found", unavailable-info, detail-category question,
+  multiple-match clarification); same clarification translated in `chat_service.py`.
+- Frontend `useChat.js`: invalidates the `['me']` query on stream done when the store user lacks
+  `matri_id`, so the chat page stops re-asking for an ID right after linking.
+- Tests: new `tests/test_questionnaire_chat.py` (37), `tests/test_chat_questionnaire_flow.py` (11),
+  `tests/test_db_query_service.py` (7); `test_questionnaire.py` updated for gender-skip
+  (`age_range_confirm` first, gender auto-applied); `test_matri_auto_link.py` gained two flow-start
+  tests. Backend suite: **286 passed**. Frontend `npm run build` passes.
+
+## 2026-07-31 — Marathi/Hinglish chat-first MatriID onboarding
+
+- Chat now asks for the user's MatriID in Marathi when it opens with no ID linked: the empty
+  chat screen renders a Marathi assistant bubble ("तुमचा matrimony ID शेअर करा…") plus a
+  MatriID input in `EmptyState` ("Perfect Partner शोधा"). Submitting the ID sends it as a
+  normal chat message — no page redirect.
+- Backend auto-link: `ChatService` (`stream_process_message` / `process_message`) now takes
+  the authenticated `user`; when `user.matri_id` is empty and the message is a bare ID token
+  (e.g. `ES92669`) or contains an id/matri/आयडी hint (`_extract_matri_id`), it links the ID
+  via the new shared `matri_service.link_matri_id_to_user(db, user, matri_id)` helper and
+  replies conversationally in Marathi (success / not-found / DB-error variants).
+- `profile_routes.POST /api/profile/matri/link` refactored to reuse the same helper.
+- Marathi/Minglish translations: greetings, the ID prompt, `_DETAIL_CATEGORY_QUESTION`,
+  inline notices, `user_facing_error`, the full questionnaire (`core/questionnaire.py`:
+  questions, options, confirm keep/change/skip, `known_value` text), `EmptyState`, `Chat`
+  input placeholder, `Profile.jsx` labels, and `Landing` example chips. Filter values,
+  `option_id`, `text_key` and the greeting keys are unchanged (LLM extraction + tests intact).
+- Tests: new `tests/test_matri_auto_link.py` (18 tests) covering `_extract_matri_id` and the
+  auto-link success/not-found/error/already-linked/existing-conversation paths; updated
+  `test_questionnaire.py` (`known_value` → "Female जोडीदार", Marathi validation error) and
+  `test_chat_error_messages.py` (Marathi `user_facing_error` assertions). Backend suite:
+  **228 passed**. Frontend `npm run build` passes.
+- Fixed a dead link: EmptyState's partner-preferences card now goes to `/app/profile`
+  (the old `/app/partner-preferences` route never existed).
+
+## 2026-07-31 — Migrated matrimony DB to Disha Vadhuvar (dishavadhuvar.com)
+
+- Replaced the old matrimony DB (`82.25.121.160` / `u320743426_mvv`) completely with the
+  new Disha Vadhuvar DB (`82.197.82.66` / `u583780661_dishavadhuvar`) in `backend/.env`
+  and the `config.py` defaults (host/user/dbname/photo URL; password stays in `.env`).
+- Inspected the new DB: same `register` structure (all `PE_*` partner-expectation columns
+  present) plus the same `advance_saveandsearch` / `basic_saveandsearch` saved-search
+  tables, so `matri_service`, `query_builder` and `db_query_service` needed no schema changes.
+- Fixed `schema_discovery.LOOKUP_TABLES` column labels to match the new DB:
+  `education→edu`, `occupation→occu`, `mother_tounge→mother_tounge`, `maritial_status→status`
+  (previously pointed at non-existent columns, so those lookups silently returned nothing).
+- Confirmed `PHOTO_BASE_URL` = `https://dishavadhuvar.com/gallary/` by probing a live photo.
+- Optimized `_sync_fetch_all()` to fetch every table's columns in ONE
+  `INFORMATION_SCHEMA.COLUMNS` query instead of one per table: schema refresh dropped from
+  ~60 s to ~16 s on the slower remote host (startup `refresh_cache()` is synchronous).
+- Fixed `query_builder.SEARCH_SSL` to include `MatriID` (it was missing, so search rows had
+  no MatriID and profile-detail lookups by MatriID could not resolve).
+- `matri_service` member `photo_url` now prepends `PHOTO_BASE_URL` (was a bare filename that
+  would not render in the Profile page); test updated accordingly.
+- Updated `ALLOWED_SQL_TABLES` to tables that exist in the new DB (old agent tables removed).
+- Live-verified against the new DB: DB connection, schema refresh, profile search
+  (Maratha brides in Pune), profile detail, and MatriID link (`ES92669`) with PE filters.
+- Kept branding as-is per user (still "myvivahai" everywhere). Vector search fallback was
+  deliberately NOT re-indexed (old index still holds old-DB profiles) per user decision.
+
+## 2026-07-31 — Profile & Partner-Preference module: Phases 1-7 implemented
+
+- Phase 1 (data layer): `User.matri_id/matri_name/matri_synced_at`, new `UserPreference`
+  table (unique `(user_id, filter_key)`), migration in `database.py`, `UserResponse`
+  extension, `preference_repository.py` (list/upsert/replace_all/clear/to_filter_dict).
+- Phase 2 (`matri_service.py`): `normalize_matri_id` (uppercase, `^[A-Za-z0-9]+$`, ≤15),
+  `fetch_partner_expectations` (register `PE_*` columns → gap-fill from
+  `advance_saveandsearch` then `basic_saveandsearch`), `link_matri_id`. Verified live:
+  WP88076 (PE only), WP37886 (saved-search fallback), and error paths.
+- Phase 3 (`core/questionnaire.py`): zero-LLM decision tree over `BUILD_ORDER` with
+  confirm (keep/change/skip), single and custom-text nodes; `start_questionnaire` /
+  `advance_questionnaire` in `matri_service.py`. Fixed an infinite loop where custom text
+  answers never advanced `current_node`.
+- Phase 4: saved preferences auto-apply as `default_filters` in the chat profile-search
+  path (merged via `_merge_filters` in `chat_service.py` and `db_query_service.py`).
+- Phase 5 (`api/profile_routes.py`): PATCH `/api/profile`, POST `/api/profile/matri/link`,
+  GET/POST/DELETE `/api/profile/preference`, POST `/api/profile/preference/start|next`,
+  all JWT-guarded, registered in `main.py`.
+- Phase 6 (frontend): `services/profileService.js`, `pages/Profile.jsx` (edit profile,
+  MatriID link + PE summary, questionnaire wizard with progress bar, saved-prefs review),
+  `/app/profile` route, Sidebar entry, `['me']` query invalidation. Vite build passed.
+- Phase 7 (tests): added `test_matri_service.py` and `test_questionnaire.py` (36 tests).
+  The new tests exposed a real bug: `apply_answers` never saved custom text answers
+  (caste/education/occupation/city) because the custom-text block was unreachable behind
+  `if option is None: continue`. Fixed; suite at **210 passed** (174 + 36).
+- Also fixed a latent mismatch: member `photo_url` read `PhotoURL` (a column that does not
+  exist) instead of `Photo1` — confirmed via INFORMATION_SCHEMA; always returned "" before.
+
+## 2026-07-31 — Profile & Partner-Preference module: planning + Phase 1
+
+- Inspected the live matrimony MySQL DB (`u320743426_mvv`): `register` (5,601 rows) carries
+  `PE_*` partner-expectation columns (~5,101 populated) plus free-text `PartnerExpectations`;
+  `basic_saveandsearch` (323) and `advance_saveandsearch` (346) store saved partner searches
+  keyed by `MatriID`.
+- Confirmed the app has no profile-edit surface today: `users` (SQLite) has no `matri_id`;
+  no profile routes; no `/app/profile` page.
+- Agreed with the user: store preferences in app SQLite (matrimony DB stays read-only),
+  auto-apply saved preferences as chat search defaults, PE_* primary with saved-search
+  fallback, and a pre-fill-and-confirm questionnaire.
+- Created `.agents/PHASES.md` and `.agents/modules/profile-preferences-context.md`;
+  updated `TODO.md`, `DECISIONS.md`, `PROJECT_CONTEXT.md`, `ARCHITECTURE.md`.
+- Started Phase 1 (backend data layer).
+
 ## 2026-07-23 — Chat error-rendering investigation started
 
 - Reviewed the supplied frontend and backend logs.

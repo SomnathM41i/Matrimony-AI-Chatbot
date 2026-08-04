@@ -308,20 +308,20 @@ export default function Landing() {
               <Sparkles className="w-3 h-3" />
               Try It
             </div>
-            <h2 className="text-3xl sm:text-4xl font-bold mb-4">Try These Questions</h2>
+            <h2 className="text-3xl sm:text-4xl font-bold mb-4">हे प्रश्न वापरून पहा</h2>
             <p className="text-surface-400 text-lg max-w-xl mx-auto">
-              See what myvivahai can do. Just type any of these into the chat.
+              myvivahai काय करू शकतो ते पहा. खालीलपैकी कोणताही प्रश्न chat मध्ये विचारा.
             </p>
           </motion.div>
 
           <motion.div {...stagger} className="grid sm:grid-cols-2 gap-4 max-w-2xl mx-auto">
             {[
-              { q: 'Show me 5 female profiles in Pune', icon: Users },
-              { q: 'Show me active male profiles in Mumbai', icon: BarChart3 },
-              { q: 'Tell me about the refund policy', icon: Shield },
-              { q: 'Show me success stories', icon: Heart },
-              { q: 'List active male members in Mumbai', icon: Search },
-              { q: 'Find profiles with age between 25-30', icon: Users },
+              { q: 'पुण्यातील 5 मुलींची प्रोफाइल दाखवा', icon: Users },
+              { q: 'मुंबईतील मुलांची प्रोफाइल दाखवा', icon: BarChart3 },
+              { q: 'refund policy बद्दल सांगा', icon: Shield },
+              { q: 'success stories दाखवा', icon: Heart },
+              { q: 'मुंबईतील सक्रिय पुरुष सदस्य दाखवा', icon: Search },
+              { q: '25-30 वयोगटातील profiles शोधा', icon: Users },
             ].map(({ q, icon: Icon }) => (
               <motion.div
                 key={q}

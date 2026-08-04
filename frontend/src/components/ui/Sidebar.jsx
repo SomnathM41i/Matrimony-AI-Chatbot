@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  MessageSquare, History, Plus, LogOut, Trash2, Menu, X, Database, Wifi, WifiOff, Brain, Shield, Cpu,
+  MessageSquare, History, Plus, LogOut, Trash2, Menu, X, Database, Wifi, WifiOff, Brain, Shield, Cpu, User,
 } from 'lucide-react'
 import { useHistory } from '../../hooks/useHistory'
 import { useAuth } from '../../hooks/useAuth'
@@ -70,6 +70,17 @@ export default function Sidebar() {
           <History className="w-4 h-4" />
           History
         </button>
+        <button
+          onClick={() => { navigate('/app/profile'); setOpen(false) }}
+          className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
+            location.pathname === '/app/profile'
+              ? 'bg-primary-600/20 text-primary-300'
+              : 'text-surface-400 hover:text-surface-200 hover:bg-surface-800'
+          }`}
+        >
+          <User className="w-4 h-4" />
+          Profile
+        </button>
         {user?.role === 'admin' && (
           <button
             onClick={() => { navigate('/admin'); setOpen(false) }}
@@ -105,6 +116,7 @@ export default function Sidebar() {
             </div>
             <button
               onClick={(e) => handleDelete(e, conv.id)}
+              aria-label={`Delete conversation ${conv.title || conv.id}`}
               className="lg:opacity-0 lg:group-hover:opacity-100 p-1 text-surface-500 hover:text-red-400 transition-all"
             >
               <Trash2 className="w-3.5 h-3.5" />
@@ -178,6 +190,8 @@ export default function Sidebar() {
     <>
       <button
         onClick={() => setOpen(!open)}
+        aria-label={open ? 'मेनू बंद करा' : 'मेनू उघडा'}
+        aria-expanded={open}
         className="fixed top-4 left-4 z-50 lg:hidden btn-ghost p-2"
       >
         {open ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}

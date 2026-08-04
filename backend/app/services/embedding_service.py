@@ -36,6 +36,26 @@ def warmup_embedding_model() -> None:
         logger.warning(f"Embedding model warmup failed: {e}")
 
 
+def unload_embedding_model() -> None:
+    """Release the embedding model from memory.
+
+    The model (~2GB for bge-m3) is lazy-loaded on first use. Call this after
+    a runtime semantic-search fallback completes so it is never kept resident
+    between requests (important on RAM-constrained hosts).
+    """
+    global _model_instance, _model_name
+    with _model_lock:
+        if _model_instance is not None:
+            logger.info("Unloading embedding model to free memory")
+            _model_instance = None
+            _model_name = None
+            try:
+                import gc
+                gc.collect()
+            except Exception:
+                pass
+
+
 def get_embedding_dimension(model_name: str = DEFAULT_MODEL) -> int:
     model = get_embedding_model(model_name)
     return model.get_sentence_embedding_dimension()

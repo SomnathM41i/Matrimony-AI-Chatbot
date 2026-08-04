@@ -22,6 +22,8 @@ FIELD_MAP = {
     "language": "Language",
     "mother_tongue": "Language",
     "residency_status": "Residencystatus",
+    "country": "Country",
+    "nationality": "Nationality",
     "family_values": "Familyvalues",
     "family_type": "FamilyType",
     "family_status": "FamilyStatus",
@@ -60,7 +62,7 @@ COLUMN_GROUPS = {
     "all": DETAIL_COLUMNS + ["Photo1", "Mobile"],
 }
 
-SEARCH_SSL = "SELECT Photo1, Name, Age, Gender, Maritalstatus, Religion, Caste, City, Status "
+SEARCH_SSL = "SELECT MatriID, Photo1, Name, Age, Gender, Maritalstatus, Religion, Caste, City, Status "
 
 
 def _resolve_columns(fields: list[str] | None) -> list[str]:
@@ -93,6 +95,17 @@ def build_profile_query(filters: dict, limit: int = 10) -> tuple[str, list]:
         else:
             conditions.append(f"LOWER({column}) = LOWER(%s)")
             params.append(str(value))
+
+    nri = filters.get("nri")
+    if nri:
+        conditions.append(
+            "("
+            "LOWER(Residencystatus) LIKE LOWER(%s) "
+            "OR (LOWER(Country) NOT LIKE LOWER('india') AND LOWER(Country) <> '') "
+            "OR (LOWER(Nationality) NOT LIKE LOWER('indian') AND LOWER(Nationality) <> '')"
+            ")"
+        )
+        params.append("%NRI%")
 
     city = filters.get("city")
     if city:

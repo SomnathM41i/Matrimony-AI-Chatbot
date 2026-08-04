@@ -15,6 +15,9 @@ export function useChat(conversationId = null, onNewConversation) {
   const abortRef = useRef(null)
   const pendingResendRef = useRef('')
 
+  const STREAM_TIMEOUT_MS = 120000
+  const STREAM_TIMEOUT_MSG = 'Sorry, the request took too long. Please try again.'
+
   useEffect(() => {
     setMessages([])
     setStreaming(false)
@@ -32,12 +35,19 @@ export function useChat(conversationId = null, onNewConversation) {
   useEffect(() => {
     if (!conversationData) return
     if (String(conversationData.id) !== String(conversationId)) return
-    const loadedMsgs = conversationData.messages.map((m) => ({
-      id: m.id,
-      role: m.role,
-      content: m.content,
-      created_at: m.created_at,
-    }))
+    const loadedMsgs = conversationData.messages.map((m) => {
+      const meta = m.metadata || {}
+      return {
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        created_at: m.created_at,
+        questionnaire: meta.questionnaire_options
+          ? { options: meta.questionnaire_options, progress: meta.questionnaire_progress }
+          : null,
+        suggestions: meta.suggestions || null,
+      }
+    })
     setMessages(loadedMsgs)
     activeConvId.current = conversationId
 
@@ -80,6 +90,12 @@ export function useChat(conversationId = null, onNewConversation) {
       const { stream, abort } = sendMessageStream(message, msgConvId)
       abortRef.current = abort
 
+      let watchdogAborted = false
+      const watchdog = setTimeout(() => {
+        watchdogAborted = true
+        abortRef.current?.()
+      }, STREAM_TIMEOUT_MS)
+
       ;(async () => {
         let doneEvent = null
         try {
@@ -102,8 +118,8 @@ export function useChat(conversationId = null, onNewConversation) {
             }
           }
         } catch (err) {
-          if (err.name === 'AbortError') return
-          const text = getApiErrorMessage(err)
+          if (err.name === 'AbortError' && !watchdogAborted) return
+          const text = watchdogAborted ? STREAM_TIMEOUT_MSG : getApiErrorMessage(err)
           toast.error(text, { id: 'chat-error' })
           setMessages((prev) => {
             const updated = [...prev]
@@ -129,6 +145,7 @@ export function useChat(conversationId = null, onNewConversation) {
           })
           return
         } finally {
+          clearTimeout(watchdog)
           setStreaming(false)
           setCurrentSteps([])
           abortRef.current = null
@@ -142,6 +159,8 @@ export function useChat(conversationId = null, onNewConversation) {
               updated[updated.length - 1] = {
                 ...last,
                 id: doneEvent.message_id,
+                questionnaire: doneEvent.questionnaire || last.questionnaire || null,
+                suggestions: doneEvent.suggestions || last.suggestions || null,
               }
             }
             return updated
@@ -160,6 +179,9 @@ export function useChat(conversationId = null, onNewConversation) {
           queryClient.invalidateQueries({ queryKey: ['conversations'] })
           queryClient.invalidateQueries({ queryKey: ['commercial-me'] })
           queryClient.invalidateQueries({ queryKey: ['commercial-usage'] })
+          if (!useAuthStore.getState().user?.matri_id) {
+            queryClient.invalidateQueries({ queryKey: ['me'] })
+          }
         }
       })()
     },

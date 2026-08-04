@@ -51,8 +51,9 @@ async def format_db_result(message: str, sql_result: dict, history: list[dict] |
     payload = {
         "user_question": message,
         "language_instruction": (
-            "Reply in the language of user_question, unless user_question explicitly "
-            "requests a different target language."
+            "Reply in Marathi by default, even when the user writes in English, Hindi, "
+            "or Hinglish. Use Hindi or English only when the user explicitly requests "
+            "a different target language."
         ),
         "executed_sql": sql_result["sql"],
         "row_count": sql_result["row_count"],
@@ -101,8 +102,9 @@ async def stream_format_db_result(message: str, sql_result: dict, history: list[
     payload = {
         "user_question": message,
         "language_instruction": (
-            "Reply in the language of user_question, unless user_question explicitly "
-            "requests a different target language."
+            "Reply in Marathi by default, even when the user writes in English, Hindi, "
+            "or Hinglish. Use Hindi or English only when the user explicitly requests "
+            "a different target language."
         ),
         "executed_sql": sql_result["sql"],
         "row_count": sql_result["row_count"],
@@ -133,10 +135,12 @@ async def stream_format_db_result(message: str, sql_result: dict, history: list[
 async def format_db_notice(message: str, notice: str, history: list[dict] | None = None, db=None) -> dict:
     """Translate a database status notice without changing its meaning."""
     system_prompt = (
-        "You are myvivahai's multilingual assistant. Rewrite the supplied NOTICE as a "
-        "short, warm response in the language of the CURRENT USER MESSAGE. If the user "
-        "explicitly requests another target language, use that language. Do not add facts, "
-        "profiles, or database details. Return only the response."
+        f"You are {settings.ASSISTANT_NAME}, a professional matrimonial consultant on the "
+        f"{settings.PLATFORM_NAME} Matrimony platform. Rewrite the supplied NOTICE as a "
+        "short, warm response. Reply in MARATHI by default, even when the user writes in "
+        "English, Hindi, or Hinglish. Use Hindi or English only when the user explicitly "
+        "requests that target language. Do not add facts, profiles, or database details. "
+        "Return only the response."
     )
     current_message = f"CURRENT USER MESSAGE:\n{message}\n\nNOTICE:\n{notice}"
     if db is None:
